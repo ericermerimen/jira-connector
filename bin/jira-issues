@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# jira-issues: High-level Jira query commands with pagination
+# Usage:
+#   jira-issues mine                   # My open issues
+#   jira-issues project <KEY>          # Recent issues in project
+#   jira-issues issue <KEY>            # Single issue detail
+#   jira-issues sprint                 # Current sprint issues
+#   jira-issues status "<status>"      # Issues by status
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Run JQL search with pagination
+search_jql() {
+    local jql="$1"
+    local max_per_page="${2:-50}"
+    local start_at=0
+    local total=999999
+    local all_issues="[]"
+
+    while [[ $start_at -lt $total ]]; do
+        local encoded_jql
+        encoded_jql="$(echo "$jql" | sed 's/ /+/g; s/"/%22/g; s/=/%3D/g; s/(/%28/g; s/)/%29/g; s/!/%21/g')"
+
+        local result
+        result="$("$SCRIPT_DIR/jira-api" "/rest/api/3/search?jql=${encoded_jql}&startAt=${start_at}&maxResults=${max_per_page}&fields=summary,status,assignee,reporter,priority,issuetype,created,updated" 2>/dev/null)" || {
+            echo "ERROR: Search failed" >&2
+            return 1
+        }
+
+        total="$(echo "$result" | jq -r '.total // 0')"
+        local page_issues
+        page_issues="$(echo "$result" | jq '.issues // []')"
+        all_issues="$(echo "$all_issues $page_issues" | jq -s '.[0] + .[1]')"
+
+        local returned
+        returned="$(echo "$page_issues" | jq 'length')"
+        start_at=$((start_at + returned))
+
+        # Safety: break if no results returned
+        [[ "$returned" -eq 0 ]] && break
+    done
+
+    echo "$all_issues"
+}
+
+# Format issue list for display
+format_list() {
+    local issues="$1"
+    echo "$issues" | jq -r '.[] | "\(.key): \(.fields.summary) [\(.fields.status.name)] - \(.fields.assignee.displayName // "Unassigned")"'
+}
+
+# Format single issue detail
+format_detail() {
+    local issue="$1"
+    echo "$issue" | jq -r '"Key:      \(.key)
+Summary:  \(.fields.summary)
+Status:   \(.fields.status.name)
+Type:     \(.fields.issuetype.name)
+Priority: \(.fields.priority.name // "None")
+Assignee: \(.fields.assignee.displayName // "Unassigned")
+Reporter: \(.fields.reporter.displayName // "Unknown")
+Created:  \(.fields.created)
+Updated:  \(.fields.updated)
+
+\(.fields.description // "No description")"'
+}
+
+case "${1:-}" in
+    mine)
+        echo "Fetching your open issues..."
+        issues="$(search_jql "assignee=currentUser() AND statusCategory!=Done ORDER BY updated DESC")"
+        count="$(echo "$issues" | jq 'length')"
+        echo "Found $count issue(s):"
+        echo ""
+        format_list "$issues"
+        ;;
+    project)
+        local_key="${2:-}"
+        [[ -z "$local_key" ]] && { echo "Usage: jira-issues project <KEY>"; exit 1; }
+        echo "Fetching recent issues in $local_key..."
+        issues="$(search_jql "project=${local_key} ORDER BY updated DESC" 20)"
+        count="$(echo "$issues" | jq 'length')"
+        echo "Found $count issue(s):"
+        echo ""
+        format_list "$issues"
+        ;;
+    issue)
+        local_key="${2:-}"
+        [[ -z "$local_key" ]] && { echo "Usage: jira-issues issue <KEY>"; exit 1; }
+        result="$("$SCRIPT_DIR/jira-api" "/rest/api/3/issue/${local_key}?fields=summary,status,issuetype,assignee,reporter,priority,created,updated,description")" || {
+            echo "ERROR: Could not fetch issue $local_key" >&2
+            exit 1
+        }
+        format_detail "$result"
+        ;;
+    sprint)
+        echo "Fetching current sprint issues..."
+        # Get projects from config
+        projects="$("$SCRIPT_DIR/jira-config" get projects 2>/dev/null || echo "")"
+        if [[ -z "$projects" || "$projects" == "[]" ]]; then
+            echo "No projects configured. Run /jira:setup or specify: jira-issues sprint <PROJECT>"
+            exit 1
+        fi
+        # Extract first project key
+        first_project="$(echo "$projects" | sed 's/\[//;s/\]//;s/,.*//;s/ //g')"
+        issues="$(search_jql "project=${first_project} AND sprint in openSprints() ORDER BY status ASC")"
+        count="$(echo "$issues" | jq 'length')"
+        echo "Found $count issue(s) in current sprint:"
+        echo ""
+        format_list "$issues"
+        ;;
+    status)
+        local_status="${2:-}"
+        [[ -z "$local_status" ]] && { echo "Usage: jira-issues status \"<status>\""; exit 1; }
+        echo "Fetching issues with status '$local_status'..."
+        issues="$(search_jql "status=\"${local_status}\" AND assignee=currentUser() ORDER BY updated DESC")"
+        count="$(echo "$issues" | jq 'length')"
+        echo "Found $count issue(s):"
+        echo ""
+        format_list "$issues"
+        ;;
+    *)
+        echo "Usage: jira-issues {mine|project|issue|sprint|status} [args]"
+        exit 1
+        ;;
+esac
