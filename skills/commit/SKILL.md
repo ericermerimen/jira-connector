@@ -212,9 +212,23 @@ If A: read each affected doc, propose specific edits showing a diff, then use As
 
 **If exit 1 (no matches):**
 
-Tell user: "No docs reference your changed files. Moving to commit."
+Use AskUserQuestion:
+- Question: "No existing docs reference your changed files. What would you like to do?"
+- A) "Skip docs" with description "No documentation changes needed for this commit"
+- B) "Generate a doc entry" with description "I'll write a brief summary of this change as a learnings/ or decisions/ entry"
 
-Go to Step 4.
+**STOP and wait.**
+
+If B: ask what type of doc to generate:
+- Use AskUserQuestion:
+  - Question: "What kind of doc should I create?"
+  - A) "Learning/gotcha" with description "Document a non-obvious finding, gotcha, or pattern discovered during this work. Saved to docs/learnings/"
+  - B) "Decision record" with description "Document why this approach was chosen. Saved to docs/decisions/"
+  - C) "Cancel" with description "Skip docs after all"
+
+If A or B: draft the doc content based on the changes in this commit, show it to the user for approval, then write the file.
+
+If A (skip) from the first question: go to Step 4.
 
 ---
 
@@ -241,21 +255,27 @@ Run all confirmed actions in order:
 
 3. **Doc updates** (only if confirmed in Step 3): write the approved edits.
 
-Report results:
+Report results. Read `jira_url` from config to build the clickable link:
+
 ```
 Done:
-  Committed: feat(PROJ-100): add user profile caching
-  Jira PROJ-100: commented + transitioned to QA + reassigned to reporter
-  Updated: docs/architecture/overview.md
+- Committed: feat(PROJ-100): add user profile caching (abc1234)
+- Jira: PROJ-100 commented + transitioned to QA + reassigned to reporter
+  https://example.atlassian.net/browse/PROJ-100
+- Docs: updated docs/architecture/overview.md
 ```
 
-Or for no-ticket commits:
+The Jira URL format is: `{jira_url}/browse/{TICKET_ID}`
+
+For no-ticket commits:
 ```
 Done:
-  Committed: fix: resolve button alignment on mobile
-  Jira: skipped (no ticket)
-  Docs: no affected docs found
+- Committed: fix: resolve button alignment on mobile (def5678)
+- Jira: skipped (no ticket)
+- Docs: skipped
 ```
+
+Always include the short commit hash after the message so the user can reference it.
 
 ## Edge Cases
 
