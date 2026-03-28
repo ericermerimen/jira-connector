@@ -52,17 +52,24 @@ If all good, tell user: "Prerequisites OK. Detected environment: [env type]." Th
 
 Ask the user in plain text:
 
-"What's your Jira Cloud URL? (e.g. https://mycompany.atlassian.net)"
+"What's your Jira URL? You can paste your full board URL (e.g. https://mycompany.atlassian.net/jira/software/projects/PE/boards/33) or just the base URL (https://mycompany.atlassian.net)."
 
 **STOP your response here. Wait for the user to type their URL.**
 
 When they answer:
-- Validate format: must match `https://*.atlassian.net`
-- Check the host resolves: `curl -s -o /dev/null --connect-timeout 10 --head "$URL" 2>&1`
-  - If curl exits 0: "URL looks good." (We'll verify it fully works when we test your credentials in Step 5.)
-  - If curl exits non-zero (DNS failure, timeout, connection refused): "Can't reach that URL. Check the address and your network/VPN."
-- Do NOT try to hit a Jira API endpoint here. We don't have credentials yet. The real validation happens in Step 5.
-- If OK: save with `$PLUGIN_ROOT/bin/jira-config set jira_url "$URL"`, proceed to Step 3
+- **Parse the URL intelligently:**
+  - If they pasted a full board/project URL like `https://example.atlassian.net/jira/software/projects/PE/boards/33`:
+    - Extract the base URL: `https://example.atlassian.net`
+    - Extract the project key if present in the path (e.g., `PE` from `/projects/PE/`)
+    - Tell user: "Got it. Base URL: https://example.atlassian.net, detected project: PE."
+    - Save the project key: `$PLUGIN_ROOT/bin/jira-config set projects "[PE]"`
+  - If they pasted just the base URL like `https://mycompany.atlassian.net`:
+    - Use as-is
+- Validate the base URL format: must contain `.atlassian.net`
+- Check the host resolves: `curl -s -o /dev/null --connect-timeout 10 --head "$BASE_URL" 2>&1`
+  - If curl exits 0: "URL looks good." (We'll verify it works with your credentials in Step 5.)
+  - If curl exits non-zero: "Can't reach that URL. Check the address and your network/VPN."
+- Save: `$PLUGIN_ROOT/bin/jira-config set jira_url "$BASE_URL"`
 
 ---
 
