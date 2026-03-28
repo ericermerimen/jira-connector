@@ -19,8 +19,11 @@ description: >
 
 Find the plugin root by locating `bin/jira-config`:
 ```bash
-PLUGIN_ROOT="$(dirname "$(dirname "$(find ~/.claude/plugins -name jira-config -path "*/jira-connector/bin/*" 2>/dev/null | head -1)")" 2>/dev/null)"
-[[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/bin/jira-config" ]] && { echo "ERROR: Cannot find jira-connector plugin."; exit 1; }
+PLUGIN_ROOT=""
+for dir in "$HOME/.claude/plugins/marketplaces/jira-connector" "$HOME/.claude/plugins/cache/jira-connector"/*/; do
+    [[ -f "$dir/bin/jira-config" ]] && { PLUGIN_ROOT="$dir"; break; }
+done
+[[ -z "$PLUGIN_ROOT" ]] && { echo "ERROR: Cannot find jira-connector plugin."; exit 1; }
 ```
 
 ## Preamble
@@ -100,9 +103,9 @@ If B: let user type new message, then re-present.
 **If JIRA_AVAILABLE=false OR TICKET_FOUND=false:**
 
 Tell the user clearly:
-"No Jira ticket was detected for this commit. Skipping Jira update. We'll proceed with the git commit and then check if any docs need updating."
+"No Jira ticket was detected for this commit. Skipping Jira update. If you want to link a ticket, mention its ID now, otherwise we'll proceed with the git commit and docs check."
 
-Go directly to Step 3. Do NOT ask the user to enter a ticket ID unless they specifically mentioned one.
+**STOP and wait for the user's response before continuing.**
 
 **If JIRA_AVAILABLE=true AND TICKET_FOUND=true:**
 

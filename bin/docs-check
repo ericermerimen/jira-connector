@@ -95,34 +95,44 @@ full_scan() {
     quick_scan "$docs_dir" && found=1
 
     # Check for stale references: file paths in docs that don't exist
-    echo ""
-    echo "# Stale references (files referenced in docs but not found on disk):"
+    local stale_refs=""
 
     while IFS= read -r doc_file; do
         # Extract file paths from markdown (src/..., lib/..., etc.)
         while IFS= read -r ref_path; do
             if [[ ! -f "$git_root/$ref_path" ]]; then
-                echo "$doc_file: references $ref_path (file not found)"
+                stale_refs+="$doc_file: references $ref_path (file not found)"$'\n'
                 found=1
             fi
         done < <(grep -oE '(src|lib|app|components|hooks|api|pages|bin)/[a-zA-Z0-9_./-]+\.(ts|tsx|js|jsx|py|sh|md)' "$doc_file" 2>/dev/null | sort -u)
     done < <(find "$docs_dir" -name '*.md' -type f 2>/dev/null)
 
+    if [[ -n "$stale_refs" ]]; then
+        echo ""
+        echo "# Stale references (files referenced in docs but not found on disk):"
+        printf '%s' "$stale_refs"
+    fi
+
     # Check README index for dead links
     local readme="$docs_dir/README.md"
     if [[ -f "$readme" ]]; then
-        echo ""
-        echo "# Dead links in README.md:"
+        local dead_links=""
         while IFS= read -r link; do
             # Skip external URLs
             [[ "$link" == http* ]] && continue
             [[ "$link" == \#* ]] && continue
             local resolved="$docs_dir/$link"
             if [[ ! -f "$resolved" && ! -d "$resolved" ]]; then
-                echo "$readme: dead link to $link"
+                dead_links+="$readme: dead link to $link"$'\n'
                 found=1
             fi
         done < <(grep -oE '\[.*?\]\((.*?)\)' "$readme" 2>/dev/null | grep -oE '\(.*?\)' | tr -d '()')
+
+        if [[ -n "$dead_links" ]]; then
+            echo ""
+            echo "# Dead links in README.md:"
+            printf '%s' "$dead_links"
+        fi
     fi
 
     return $((found == 0 ? 1 : 0))

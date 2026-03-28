@@ -16,8 +16,11 @@ Fetch and display Jira ticket information.
 ## Plugin Root
 
 ```bash
-PLUGIN_ROOT="$(dirname "$(dirname "$(find ~/.claude/plugins -name jira-config -path "*/jira-connector/bin/*" 2>/dev/null | head -1)")" 2>/dev/null)"
-[[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/bin/jira-config" ]] && { echo "ERROR: Cannot find jira-connector plugin."; exit 1; }
+PLUGIN_ROOT=""
+for dir in "$HOME/.claude/plugins/marketplaces/jira-connector" "$HOME/.claude/plugins/cache/jira-connector"/*/; do
+    [[ -f "$dir/bin/jira-config" ]] && { PLUGIN_ROOT="$dir"; break; }
+done
+[[ -z "$PLUGIN_ROOT" ]] && { echo "ERROR: Cannot find jira-connector plugin."; exit 1; }
 ```
 
 ## Preamble

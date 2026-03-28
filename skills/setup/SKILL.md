@@ -23,8 +23,11 @@ Interactive setup wizard. Each step uses AskUserQuestion for proper selection UI
 
 Find the plugin root by locating `bin/jira-config`:
 ```bash
-PLUGIN_ROOT="$(dirname "$(dirname "$(find ~/.claude/plugins -name jira-config -path "*/jira-connector/bin/*" 2>/dev/null | head -1)")" 2>/dev/null)"
-[[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/bin/jira-config" ]] && { echo "ERROR: Cannot find jira-connector plugin. Is it installed?"; exit 1; }
+PLUGIN_ROOT=""
+for dir in "$HOME/.claude/plugins/marketplaces/jira-connector" "$HOME/.claude/plugins/cache/jira-connector"/*/; do
+    [[ -f "$dir/bin/jira-config" ]] && { PLUGIN_ROOT="$dir"; break; }
+done
+[[ -z "$PLUGIN_ROOT" ]] && { echo "ERROR: Cannot find jira-connector plugin."; exit 1; }
 echo "Plugin root: $PLUGIN_ROOT"
 ```
 
@@ -56,6 +59,8 @@ Ask the user in plain text:
 When they answer:
 - Validate format: must match `https://*.atlassian.net`
 - Validate connectivity: `curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$URL/rest/api/3/serverInfo"`
+- Accept both 200 and 401 as "URL is reachable and valid" (401 means the server responded but needs auth, which is expected before credentials are stored)
+- Only fail on timeouts, DNS errors, or non-HTTP errors
 - If fails: tell user and use AskUserQuestion again
 - If OK: save with `$PLUGIN_ROOT/bin/jira-config set jira_url "$URL"`, proceed to Step 3
 
@@ -97,16 +102,14 @@ When they answer: save the token in memory. NEVER display it again. Proceed to S
 
 ## Step 5: Validate Credentials
 
-Set env vars and validate (run silently):
+Store credentials and validate (run silently):
 ```bash
-export JIRA_API_TOKEN="<token>"
-export JIRA_EMAIL="<email>"
 $PLUGIN_ROOT/bin/jira-config set jira_email "$EMAIL"
-$PLUGIN_ROOT/bin/jira-config set credential_method "env"
+echo "$TOKEN" | $PLUGIN_ROOT/bin/jira-cred set "$EMAIL"
 $PLUGIN_ROOT/bin/jira-cred validate
 ```
 
-SECURITY: `export` is a shell builtin, safe. But NEVER pass the token as a CLI argument to any external command.
+SECURITY: NEVER pass the token as a CLI argument to any external command. Always pipe via stdin.
 
 - Exit 0: "Authenticated successfully." Proceed to Step 6.
 - Exit 1: "Authentication failed." Use AskUserQuestion:
@@ -162,6 +165,8 @@ $PLUGIN_ROOT/bin/jira-config set jira_comment_style "null"
 $PLUGIN_ROOT/bin/jira-config set docs_scaffold "skip"
 ```
 
+The absence of explicit workflow rules means /jira:commit will ask you each time what to do with a ticket. This is the safest default.
+
 **If B:** Go through 7a, 7b, 7c, 7d.
 
 ---
@@ -215,7 +220,7 @@ Use AskUserQuestion:
 - A) "Conventional commits" with description "Recommended. Format: feat(TICKET): description, fix(TICKET): description"
 - B) "Custom format" with description "Describe your format in plain English (e.g., 'English summary followed by Chinese translation')"
 
-If B: use AskUserQuestion to let them type their custom format instruction.
+If B: ask in plain text and STOP. Wait for the user to type their custom format instruction.
 
 ### Step 7c: Jira Comment Style
 
@@ -224,7 +229,7 @@ Use AskUserQuestion:
 - A) "Structured" with description "Recommended. Title, changes list, and result/new behavior"
 - B) "Custom format" with description "Describe your preferred format in plain English"
 
-If B: use AskUserQuestion to let them type their custom format.
+If B: ask in plain text and STOP. Wait for the user to type their custom format.
 
 ### Step 7d: Docs Scaffold
 
