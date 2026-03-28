@@ -183,11 +183,11 @@ cmd_validate() {
         exit 5
     }
 
-    # Pipe token via stdin to curl to avoid ps visibility
+    # Pipe credentials via curl --config to avoid ps visibility
     local http_code
-    http_code="$(echo "$token" | curl -s -o /dev/null -w "%{http_code}" \
+    http_code="$(printf -- '-u "%s:%s"\n' "$email" "$token" | curl --config - \
+        -s -o /dev/null -w "%{http_code}" \
         --connect-timeout 10 \
-        -u "${email}:$(cat -)" \
         -H "Accept: application/json" \
         "${url}/rest/api/3/myself" 2>/dev/null)" || {
         echo "ERROR: Network timeout" >&2
