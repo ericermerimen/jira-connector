@@ -1,0 +1,6 @@
+{
+  "accountId": "abc123",
+  "emailAddress": "test@example.com",
+  "displayName": "Test User",
+  "active": true
+}

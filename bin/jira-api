@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# jira-api: Authenticated Jira REST API wrapper with retry
+# Usage:
+#   jira-api <endpoint>                          # GET request
+#   jira-api <endpoint> -X POST -d '{"json":1}'  # POST request
+#   jira-api <endpoint> [any curl args...]        # Pass-through
+#
+# Reads jira_url and jira_email from config.
+# Retrieves token from jira-cred (piped via curl --config to avoid ps visibility).
+# Retries on 429 with exponential backoff (max 3 retries).
+#
+# Exit codes:
+#   0 = success
+#   1 = auth fail / not found / other
+#   3 = timeout
+#   4 = 403 forbidden
+#   5 = no credentials
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+MAX_RETRIES=3
+INITIAL_BACKOFF=2
+
+# Load config
+get_config_val() {
+    "$SCRIPT_DIR/jira-config" get "$1" 2>/dev/null || {
+        # Try resolved config (global + project merge)
+        "$SCRIPT_DIR/jira-config" resolve 2>/dev/null | grep -E "^$1:" | head -1 | sed -E 's/^[^:]+:\s*//'
+    }
+}
+
+main() {
+    local endpoint="${1:-}"
+    [[ -z "$endpoint" ]] && { echo "Usage: jira-api <endpoint> [curl-args...]"; exit 1; }
+    shift
+
+    # Remove leading slash if present
+    endpoint="${endpoint#/}"
+
+    local url email token
+    url="$(get_config_val jira_url)"
+    email="$(get_config_val jira_email)"
+    token="$("$SCRIPT_DIR/jira-cred" get token 2>/dev/null)" || {
+        echo "ERROR: Could not retrieve Jira token" >&2
+        exit 5
+    }
+
+    [[ -z "$url" ]] && { echo "ERROR: jira_url not configured" >&2; exit 1; }
+    [[ -z "$email" ]] && { echo "ERROR: jira_email not configured" >&2; exit 1; }
+
+    local full_url="${url}/${endpoint}"
+    local attempt=0
+    local backoff=$INITIAL_BACKOFF
+
+    while [[ $attempt -le $MAX_RETRIES ]]; do
+        local tmpfile http_code
+        tmpfile="$(mktemp)"
+
+        # Pipe credentials to curl via --config - to avoid ps visibility
+        http_code="$(printf -- '-u "%s:%s"\n' "$email" "$token" | curl --config - \
+            -s -w "%{http_code}" -o "$tmpfile" \
+            --connect-timeout 10 \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            "$@" \
+            "$full_url" 2>/dev/null)" || {
+            rm -f "$tmpfile"
+            echo "ERROR: Network timeout" >&2
+            exit 3
+        }
+
+        case "$http_code" in
+            2*)
+                cat "$tmpfile"
+                rm -f "$tmpfile"
+                return 0
+                ;;
+            429)
+                rm -f "$tmpfile"
+                if [[ $attempt -lt $MAX_RETRIES ]]; then
+                    echo "Rate limited. Retrying in ${backoff}s... (attempt $((attempt + 1))/$MAX_RETRIES)" >&2
+                    sleep "$backoff"
+                    backoff=$((backoff * 2))
+                    attempt=$((attempt + 1))
+                else
+                    echo "ERROR: Rate limited after $MAX_RETRIES retries" >&2
+                    exit 1
+                fi
+                ;;
+            401)
+                rm -f "$tmpfile"
+                echo "ERROR: Authentication failed (401)" >&2
+                exit 1
+                ;;
+            403)
+                rm -f "$tmpfile"
+                echo "ERROR: Access denied (403)" >&2
+                exit 4
+                ;;
+            404)
+                rm -f "$tmpfile"
+                echo "ERROR: Not found (404)" >&2
+                exit 1
+                ;;
+            *)
+                local body
+                body="$(cat "$tmpfile")"
+                rm -f "$tmpfile"
+                echo "ERROR: HTTP $http_code: $body" >&2
+                exit 1
+                ;;
+        esac
+    done
+}
+
+main "$@"

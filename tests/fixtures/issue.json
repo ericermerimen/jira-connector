@@ -1,0 +1,14 @@
+{
+  "key": "PROJ-100",
+  "fields": {
+    "summary": "Fix session handling",
+    "status": { "name": "In Progress" },
+    "issuetype": { "name": "Bug" },
+    "assignee": { "displayName": "Test User", "accountId": "abc123" },
+    "reporter": { "displayName": "Reporter User", "accountId": "def456" },
+    "priority": { "name": "High" },
+    "created": "2026-03-20T10:00:00.000+0000",
+    "updated": "2026-03-27T15:30:00.000+0000",
+    "description": "Session expires unexpectedly"
+  }
+}
