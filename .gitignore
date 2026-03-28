@@ -1,0 +1,10 @@
+# Per-project config (contains user-specific overrides)
+.jira-connector.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
