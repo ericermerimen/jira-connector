@@ -84,11 +84,21 @@ Draft commit message using `commit_style` from config:
 - If no ticket: `type: description` (no scope)
 - If custom style set: follow the natural language instruction
 
-Use AskUserQuestion:
-- Question: "Here's the commit I'll create. Look good?"
-- Show the draft message and file summary in the question text
-- A) "Commit as shown" with description showing the commit message
-- B) "Edit message" with description "I'll suggest changes via Other"
+Show the commit details as plain text ABOVE the question:
+```
+Commit message:
+  feat(PROJ-100): add user profile caching
+
+Files (3 changed, +47, -12):
+  src/components/UserCache.tsx
+  src/hooks/useUserCache.ts
+  src/api/user-cache.ts
+```
+
+Then use AskUserQuestion:
+- Question: "Approve this commit?"
+- A) "Commit as shown" with description "Stage and commit with the message above"
+- B) "Edit message" with description "I'll type a different message"
 - C) "Abort" with description "Cancel everything, no changes made"
 
 **STOP and wait.**
@@ -128,14 +138,32 @@ $PLUGIN_ROOT/bin/jira-api /rest/api/3/issue/TICKET_ID/transitions
 ```
 
 Draft Jira comment using `jira_comment_style` from config:
-- If null: use structured format with Title, Changes (bullets), Result
+- If null: use this structured format:
+  - **Title**: Brief summary of what was done
+  - **Root Cause** (include ONLY for Bug tickets): Why the issue occurred
+  - **Changes**: Specific changes made (bullet points)
+  - **Result**: How it works now / new behavior
 - If set: follow the natural language instruction
 
-Use AskUserQuestion:
-- Question: Show the full Jira update plan (comment text + transition + reassignment)
-- A) "Post to Jira as shown" with description summarizing: comment + transition + reassign
-- B) "Edit comment" with description "I'll modify the comment text"
-- C) "Skip Jira update" with description "Just do the git commit, don't touch Jira"
+Show the full Jira update plan as plain text:
+```
+I'll post this to Jira [TICKET_ID]:
+
+  Title: [summary]
+  Root Cause: [only for bugs]
+  Changes:
+  - [change 1]
+  - [change 2]
+  Result: [new behavior]
+
+  Action: Transition to [status], Reassign to [person]
+```
+
+Then use AskUserQuestion:
+- Question: "Approve this Jira update?"
+- A) "Post as shown" with description "Comment + transition + reassign as listed above"
+- B) "Edit comment" with description "I'll modify the text"
+- C) "Skip Jira" with description "Don't touch Jira for this commit"
 
 If transition_to is null (unconfigured type), show available transitions as options instead:
 - Question: "What should happen to TICKET_ID (Type: Bug, Status: In Progress)?"
