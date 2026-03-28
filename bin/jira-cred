@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# jira-cred: Cross-platform credential management
+# Usage:
+#   jira-cred set <email> <token>    # Store credentials
+#   jira-cred get token              # Retrieve token to stdout
+#   jira-cred get email              # Retrieve email to stdout
+#   jira-cred validate               # Test credentials against Jira API
+#   jira-cred detect-env             # Print detected environment type
+#   jira-cred delete                 # Remove stored credentials
+#
+# Exit codes for validate:
+#   0 = OK
+#   1 = Token expired/revoked (401)
+#   2 = Keychain locked/access denied
+#   3 = Network timeout
+#   4 = 403 Forbidden
+#   5 = Credential not found
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_NAME="jira-connector"
+
+# Cleanup trap for any temp files
+_cleanup_files=()
+cleanup() { rm -f "${_cleanup_files[@]}"; }
+trap cleanup EXIT
+
+# Get credential method from config
+get_cred_method() {
+    "$SCRIPT_DIR/jira-config" get credential_method 2>/dev/null || echo "env"
+}
+
+# Detect the current environment type
+detect_environment() {
+    if [[ "${OSTYPE:-}" == darwin* ]]; then
+        # macOS: check for GUI session
+        if [[ -n "${DISPLAY:-}" ]] || [[ -n "${TERM_PROGRAM:-}" ]]; then
+            echo "macos-desktop"
+        else
+            echo "macos-headless"
+        fi
+    elif [[ -n "${MSYSTEM:-}" ]]; then
+        echo "windows-gitbash"
+    elif [[ "$(uname -r 2>/dev/null || true)" == *[Mm]icrosoft* ]] || [[ "$(uname -r 2>/dev/null || true)" == *WSL* ]]; then
+        echo "windows-wsl"
+    elif [[ -n "${DISPLAY:-}" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        if command -v secret-tool >/dev/null 2>&1; then
+            echo "linux-desktop"
+        else
+            echo "linux-desktop-no-secretool"
+        fi
+    else
+        echo "linux-headless"
+    fi
+}
+
+# Store credential in keychain
+keychain_set() {
+    local key="$1"
+    local value="$2"
+    local env
+    env="$(detect_environment)"
+
+    case "$env" in
+        macos-*)
+            # Delete existing, then add
+            security delete-generic-password -s "${SERVICE_NAME}-${key}" -a "$USER" 2>/dev/null || true
+            security add-generic-password -s "${SERVICE_NAME}-${key}" -a "$USER" -w "$value"
+            ;;
+        linux-desktop)
+            echo "$value" | secret-tool store --label "jira-connector ${key}" service "$SERVICE_NAME" key "$key"
+            ;;
+        *)
+            echo "ERROR: Keychain not available in this environment ($env). Use credential_method: env"
+            return 2
+            ;;
+    esac
+}
+
+# Get credential from keychain
+keychain_get() {
+    local key="$1"
+    local env
+    env="$(detect_environment)"
+
+    case "$env" in
+        macos-*)
+            security find-generic-password -s "${SERVICE_NAME}-${key}" -a "$USER" -w 2>/dev/null || return 2
+            ;;
+        linux-desktop)
+            secret-tool lookup service "$SERVICE_NAME" key "$key" 2>/dev/null || return 2
+            ;;
+        *)
+            return 2
+            ;;
+    esac
+}
+
+# Delete credential from keychain
+keychain_delete() {
+    local key="$1"
+    local env
+    env="$(detect_environment)"
+
+    case "$env" in
+        macos-*)
+            security delete-generic-password -s "${SERVICE_NAME}-${key}" -a "$USER" 2>/dev/null || true
+            ;;
+        linux-desktop)
+            secret-tool clear service "$SERVICE_NAME" key "$key" 2>/dev/null || true
+            ;;
+    esac
+}
+
+# Get credential from env vars
+env_get() {
+    local key="$1"
+    case "$key" in
+        token) echo "${JIRA_API_TOKEN:-}" ;;
+        email) echo "${JIRA_EMAIL:-}" ;;
+        *) return 5 ;;
+    esac
+}
+
+# Public: store credentials
+cmd_set() {
+    local email="${1:-}"
+    local token="${2:-}"
+    [[ -z "$email" || -z "$token" ]] && { echo "Usage: jira-cred set <email> <token>"; exit 1; }
+
+    local method
+    method="$(get_cred_method)"
+
+    if [[ "$method" == "keychain" ]]; then
+        keychain_set "email" "$email"
+        keychain_set "token" "$token"
+        echo "Credentials stored in keychain"
+    else
+        echo "Credential method is 'env'. Set these environment variables:"
+        echo "  export JIRA_EMAIL='$email'"
+        echo "  export JIRA_API_TOKEN='<your-token>'"
+        echo ""
+        echo "Add them to your shell profile (.bashrc, .zshrc) or a .env file with 0600 permissions."
+        echo "WARNING: Environment variables are visible in process listings and may appear in logs."
+    fi
+}
+
+# Public: retrieve credential
+cmd_get() {
+    local key="${1:-}"
+    [[ -z "$key" ]] && { echo "Usage: jira-cred get {token|email}"; exit 1; }
+
+    local method
+    method="$(get_cred_method)"
+
+    local value=""
+    if [[ "$method" == "keychain" ]]; then
+        value="$(keychain_get "$key")" || {
+            # Fallback to env
+            value="$(env_get "$key")" || true
+        }
+    else
+        value="$(env_get "$key")" || true
+    fi
+
+    if [[ -z "$value" ]]; then
+        echo "ERROR: Credential '$key' not found" >&2
+        exit 5
+    fi
+
+    echo "$value"
+}
+
+# Public: validate credentials against Jira API
+cmd_validate() {
+    local email token url
+
+    email="$(cmd_get email 2>/dev/null)" || exit 5
+    token="$(cmd_get token 2>/dev/null)" || exit 5
+    url="$("$SCRIPT_DIR/jira-config" get jira_url 2>/dev/null)" || {
+        echo "ERROR: jira_url not configured" >&2
+        exit 5
+    }
+
+    # Pipe token via stdin to curl to avoid ps visibility
+    local http_code
+    http_code="$(echo "$token" | curl -s -o /dev/null -w "%{http_code}" \
+        --connect-timeout 10 \
+        -u "${email}:$(cat -)" \
+        -H "Accept: application/json" \
+        "${url}/rest/api/3/myself" 2>/dev/null)" || {
+        echo "ERROR: Network timeout" >&2
+        exit 3
+    }
+
+    case "$http_code" in
+        200) echo "OK"; exit 0 ;;
+        401) echo "ERROR: Token expired or revoked" >&2; exit 1 ;;
+        403) echo "ERROR: Authenticated but access denied" >&2; exit 4 ;;
+        000) echo "ERROR: Network timeout" >&2; exit 3 ;;
+        *)   echo "ERROR: Unexpected HTTP $http_code" >&2; exit 1 ;;
+    esac
+}
+
+# Public: delete stored credentials
+cmd_delete() {
+    local method
+    method="$(get_cred_method)"
+
+    if [[ "$method" == "keychain" ]]; then
+        keychain_delete "email"
+        keychain_delete "token"
+        echo "Credentials removed from keychain"
+    else
+        echo "Credential method is 'env'. Remove JIRA_EMAIL and JIRA_API_TOKEN from your environment."
+    fi
+}
+
+# Main dispatch
+case "${1:-}" in
+    set)        cmd_set "${2:-}" "${3:-}" ;;
+    get)        cmd_get "${2:-}" ;;
+    validate)   cmd_validate ;;
+    detect-env) detect_environment ;;
+    delete)     cmd_delete ;;
+    *)
+        echo "Usage: jira-cred {set|get|validate|detect-env|delete} [args]"
+        exit 1
+        ;;
+esac
