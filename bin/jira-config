@@ -82,7 +82,6 @@ read_yaml_nested() {
     done < "$file"
 
     if [[ -n "$block" ]]; then
-        echo "$block" | while IFS='.' read -ra sub_parts; do :; done
         # Recursively parse the remaining path in the extracted block
         local tmpfile
         tmpfile="$(mktemp)"
@@ -101,21 +100,30 @@ write_yaml_key() {
     mkdir -p "$(dirname "$file")"
 
     if [[ ! -f "$file" ]]; then
-        echo "${key}: ${value}" > "$file"
-        chmod 600 "$file" 2>/dev/null || true
+        local newfile
+        newfile="$(mktemp)"
+        echo "${key}: ${value}" > "$newfile"
+        chmod 600 "$newfile" 2>/dev/null || true
+        mv "$newfile" "$file"
         return
     fi
 
     local tmpfile
     tmpfile="$(mktemp)"
     if grep -qE "^${key}:" "$file" 2>/dev/null; then
-        sed -E "s|^${key}:.*|${key}: ${value}|" "$file" > "$tmpfile"
+        while IFS= read -r line; do
+            if printf '%s\n' "$line" | grep -qE "^${key}:"; then
+                printf '%s\n' "${key}: ${value}"
+            else
+                printf '%s\n' "$line"
+            fi
+        done < "$file" > "$tmpfile"
     else
         cp "$file" "$tmpfile"
         echo "${key}: ${value}" >> "$tmpfile"
     fi
+    chmod 600 "$tmpfile" 2>/dev/null || true
     mv "$tmpfile" "$file"
-    chmod 600 "$file" 2>/dev/null || true
 }
 
 # Validate config values
