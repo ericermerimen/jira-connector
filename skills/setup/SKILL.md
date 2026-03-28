@@ -13,16 +13,19 @@ Interactive setup wizard. Each step uses AskUserQuestion for proper selection UI
 ## CRITICAL RULES
 
 1. **ONE STEP AT A TIME.** Never combine steps or skip ahead.
-2. **USE AskUserQuestion** for every interaction. This gives proper A/B/C selection UI with "Other" for free text. NEVER use plain text questions that the user has to type answers to.
-3. **WAIT FOR ANSWERS.** After each AskUserQuestion, STOP your response entirely. Do NOT continue until the user answers.
-4. **NEVER SHOW THE API TOKEN.** Never in bash commands, messages, or output. Pipe via stdin only.
-5. **NEVER AUTO-DECIDE.** Do not say "I'll default to X" or "I'll go with X while you confirm." Present choices and WAIT.
+2. **USE AskUserQuestion ONLY for real choices** (A/B/C/D selections like credential storage, workflow rules, defaults). This gives proper selection UI.
+3. **USE plain text for free-text inputs** (URL, email, token). Ask the question, then STOP your response and wait. Do NOT answer for the user.
+4. **STOP AND WAIT after every question.** Whether AskUserQuestion or plain text, end your message after asking. Do NOT continue until the user replies.
+5. **NEVER SHOW THE API TOKEN.** Never in bash commands, messages, or output. Pipe via stdin only.
+6. **NEVER AUTO-DECIDE.** Do not say "I'll default to X" or "I'll go with X while you confirm." Present the question and WAIT.
 
 ## Plugin Root
 
+Find the plugin root by locating `bin/jira-config`:
 ```bash
-PLUGIN_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")"/../../.. && pwd)"
-ls "$PLUGIN_ROOT/bin/jira-config" >/dev/null 2>&1 || { echo "ERROR: Cannot find bin/jira-config"; exit 1; }
+PLUGIN_ROOT="$(dirname "$(dirname "$(find ~/.claude/plugins -name jira-config -path "*/jira-connector/bin/*" 2>/dev/null | head -1)")" 2>/dev/null)"
+[[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/bin/jira-config" ]] && { echo "ERROR: Cannot find jira-connector plugin. Is it installed?"; exit 1; }
+echo "Plugin root: $PLUGIN_ROOT"
 ```
 
 ---
@@ -44,11 +47,11 @@ If all good, tell user: "Prerequisites OK. Detected environment: [env type]." Th
 
 ## Step 2: Jira URL
 
-Use AskUserQuestion:
-- Question: "What's your Jira Cloud URL?"
-- Options:
-  - A) A label showing example format like "https://mycompany.atlassian.net" with description "Enter your company's Jira Cloud URL"
-- (The user will pick "Other" and type their actual URL)
+Ask the user in plain text:
+
+"What's your Jira Cloud URL? (e.g. https://mycompany.atlassian.net)"
+
+**STOP your response here. Wait for the user to type their URL.**
 
 When they answer:
 - Validate format: must match `https://*.atlassian.net`
@@ -60,13 +63,13 @@ When they answer:
 
 ## Step 3: Email
 
-Use AskUserQuestion:
-- Question: "What's your Jira email address?"
-- Options:
-  - A) A label like "user@company.com" with description "The email you use to log into Jira"
-- (The user will pick "Other" and type their actual email)
+Ask the user in plain text:
 
-Save the email for later. Proceed to Step 4.
+"What's your Jira email address?"
+
+**STOP your response here. Wait for the user to type their email.**
+
+When they answer: save the email for later. Proceed to Step 4.
 
 ---
 
@@ -82,13 +85,13 @@ First, show these instructions as a message (NOT as a question):
 
 Note: This token grants full access to your Atlassian account. Consider using a dedicated account with restricted permissions."
 
-Then use AskUserQuestion:
-- Question: "Paste your API token below (select Other and paste it):"
-- Options:
-  - A) "I've copied the token" with description "Select Other below and paste your token"
-- (The user will pick "Other" and paste their token)
+Then ask in plain text:
 
-Save the token in memory. NEVER display it again. Proceed to Step 5.
+"Paste your API token:"
+
+**STOP your response here. Wait for the user to paste their token.**
+
+When they answer: save the token in memory. NEVER display it again. Proceed to Step 5.
 
 ---
 
