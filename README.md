@@ -13,12 +13,18 @@ A Claude Code plugin that combines Jira ticket reading, git commit workflows, an
 ## Install
 
 ```bash
-# Via Claude Code plugin system (when published)
-claude plugin install jira-connector
+# Step 1: Add the marketplace
+claude plugin marketplace add ericermerimen/jira-connector
 
-# Or clone and link manually
-git clone <repo-url> ~/jira-connector
-cd ~/jira-connector && claude plugin link .
+# Step 2: Install
+claude plugin install jira-connector
+```
+
+To update later:
+```bash
+claude plugin marketplace update jira-connector
+claude plugin uninstall jira-connector
+claude plugin install jira-connector
 ```
 
 ## Setup
