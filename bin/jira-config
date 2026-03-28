@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# jira-config: Read, write, and validate ~/.jira-connector/config.yaml
+# Usage:
+#   jira-config get <key>              # Read a top-level key
+#   jira-config get-nested <path>      # Read nested key (e.g., workflows.Bug.transition_to)
+#   jira-config set <key> <value>      # Write a top-level key
+#   jira-config validate               # Validate config, exit 0 if valid, 1 if not
+#   jira-config resolve                # Print merged config (global + per-project)
+#   jira-config path                   # Print path to global config file
+
+GLOBAL_CONFIG="$HOME/.jira-connector/config.yaml"
+PROJECT_CONFIG=""
+
+# Find per-project config by walking up to git root
+find_project_config() {
+    local git_root
+    git_root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+    if [[ -f "$git_root/.jira-connector.yaml" ]]; then
+        echo "$git_root/.jira-connector.yaml"
+    fi
+}
+
+# Read a value from YAML using jq-compatible yq or basic grep/sed
+# We use jq on a YAML-to-JSON conversion approach
+# Since we can't assume yq, we parse simple YAML with sed+grep
+read_yaml_key() {
+    local file="$1"
+    local key="$2"
+    if [[ ! -f "$file" ]]; then
+        return 1
+    fi
+    # Simple top-level key extraction (handles: key: value, key: "value")
+    grep -E "^${key}:" "$file" 2>/dev/null | head -1 | sed -E 's/^[^:]+:\s*//' | sed -E 's/^["'"'"']|["'"'"']$//g' | sed 's/\s*$//'
+}
+
+# Read nested key like workflows.Bug.transition_to
+read_yaml_nested() {
+    local file="$1"
+    local path="$2"
+    # For nested keys, use a simple state machine approach
+    # Split path by dots
+    local IFS='.'
+    local parts
+    read -ra parts <<< "$path"
+
+    if [[ ${#parts[@]} -eq 1 ]]; then
+        read_yaml_key "$file" "${parts[0]}"
+        return
+    fi
+
+    # For deeper nesting, extract the block and parse
+    # This handles 2-3 level nesting which is all we need
+    local in_block=0
+    local indent=""
+    local target_key="${parts[0]}"
+    local remaining="${path#*.}"
+
+    local block=""
+    while IFS= read -r line; do
+        if [[ $in_block -eq 0 ]]; then
+            if echo "$line" | grep -qE "^${target_key}:"; then
+                in_block=1
+                indent=""
+            fi
+        elif [[ $in_block -eq 1 ]]; then
+            if [[ -z "$indent" ]]; then
+                indent="$(echo "$line" | sed -E 's/^( +).*/\1/')"
+                if [[ -z "$indent" ]] || ! echo "$line" | grep -qE '^\s'; then
+                    break
+                fi
+            fi
+            if echo "$line" | grep -qE "^${indent}[^ ]"; then
+                block+="$(echo "$line" | sed -E "s/^${indent}//")"$'\n'
+            elif echo "$line" | grep -qE "^${indent} "; then
+                block+="$(echo "$line" | sed -E "s/^${indent}//")"$'\n'
+            else
+                break
+            fi
+        fi
+    done < "$file"
+
+    if [[ -n "$block" ]]; then
+        echo "$block" | while IFS='.' read -ra sub_parts; do :; done
+        # Recursively parse the remaining path in the extracted block
+        local tmpfile
+        tmpfile="$(mktemp)"
+        echo "$block" > "$tmpfile"
+        read_yaml_nested "$tmpfile" "$remaining"
+        rm -f "$tmpfile"
+    fi
+}
+
+# Write a top-level key to config (atomic write)
+write_yaml_key() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+
+    mkdir -p "$(dirname "$file")"
+
+    if [[ ! -f "$file" ]]; then
+        echo "${key}: ${value}" > "$file"
+        chmod 600 "$file" 2>/dev/null || true
+        return
+    fi
+
+    local tmpfile
+    tmpfile="$(mktemp)"
+    if grep -qE "^${key}:" "$file" 2>/dev/null; then
+        sed -E "s|^${key}:.*|${key}: ${value}|" "$file" > "$tmpfile"
+    else
+        cp "$file" "$tmpfile"
+        echo "${key}: ${value}" >> "$tmpfile"
+    fi
+    mv "$tmpfile" "$file"
+    chmod 600 "$file" 2>/dev/null || true
+}
+
+# Validate config values
+validate_config() {
+    local file="$1"
+    local errors=0
+
+    if [[ ! -f "$file" ]]; then
+        echo "ERROR: Config file not found: $file"
+        return 1
+    fi
+
+    # Validate jira_url
+    local url
+    url="$(read_yaml_key "$file" "jira_url")"
+    if [[ -n "$url" ]]; then
+        if ! echo "$url" | grep -qE '^https://[a-zA-Z0-9.-]+\.atlassian\.net$'; then
+            echo "ERROR: jira_url must match https://*.atlassian.net (got: $url)"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    # Validate jira_email
+    local email
+    email="$(read_yaml_key "$file" "jira_email")"
+    if [[ -n "$email" ]]; then
+        if ! echo "$email" | grep -qE '^[^@]+@[^@]+$'; then
+            echo "ERROR: jira_email must be a valid email (got: $email)"
+            errors=$((errors + 1))
+        fi
+        # Check for shell metacharacters
+        if echo "$email" | grep -qE '[;|&$`\\(){}]'; then
+            echo "ERROR: jira_email contains shell metacharacters"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    # Validate credential_method
+    local cred_method
+    cred_method="$(read_yaml_key "$file" "credential_method")"
+    if [[ -n "$cred_method" ]]; then
+        if [[ "$cred_method" != "keychain" && "$cred_method" != "env" ]]; then
+            echo "ERROR: credential_method must be 'keychain' or 'env' (got: $cred_method)"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    # Validate docs_path (no absolute, no traversal)
+    local docs_path
+    docs_path="$(read_yaml_key "$file" "docs_path")"
+    if [[ -n "$docs_path" ]]; then
+        if [[ "$docs_path" == /* ]]; then
+            echo "ERROR: docs_path must be relative (got: $docs_path)"
+            errors=$((errors + 1))
+        fi
+        if echo "$docs_path" | grep -qE '\.\.'; then
+            echo "ERROR: docs_path must not contain '..' (got: $docs_path)"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    if [[ $errors -gt 0 ]]; then
+        echo "Validation failed with $errors error(s)"
+        return 1
+    fi
+
+    echo "Config valid"
+    return 0
+}
+
+# Merge per-project config over global (only allowed keys)
+resolve_config() {
+    local project_config
+    project_config="$(find_project_config)" || true
+
+    if [[ -z "$project_config" ]] || [[ ! -f "$project_config" ]]; then
+        cat "$GLOBAL_CONFIG"
+        return
+    fi
+
+    # Allowed override keys
+    local allowed_keys="jira_url jira_email workflows docs_path ticket_prefixes projects"
+
+    # Start with global config
+    local tmpfile
+    tmpfile="$(mktemp)"
+    cp "$GLOBAL_CONFIG" "$tmpfile"
+
+    for key in $allowed_keys; do
+        local val
+        val="$(read_yaml_key "$project_config" "$key")" || true
+        if [[ -n "$val" ]]; then
+            write_yaml_key "$tmpfile" "$key" "$val"
+        fi
+    done
+
+    cat "$tmpfile"
+    rm -f "$tmpfile"
+}
+
+# Main command dispatch
+case "${1:-}" in
+    get)
+        [[ -z "${2:-}" ]] && { echo "Usage: jira-config get <key>"; exit 1; }
+        read_yaml_key "$GLOBAL_CONFIG" "$2"
+        ;;
+    get-nested)
+        [[ -z "${2:-}" ]] && { echo "Usage: jira-config get-nested <path>"; exit 1; }
+        read_yaml_nested "$GLOBAL_CONFIG" "$2"
+        ;;
+    set)
+        [[ -z "${2:-}" || -z "${3:-}" ]] && { echo "Usage: jira-config set <key> <value>"; exit 1; }
+        write_yaml_key "$GLOBAL_CONFIG" "$2" "$3"
+        ;;
+    validate)
+        validate_config "$GLOBAL_CONFIG"
+        ;;
+    resolve)
+        resolve_config
+        ;;
+    path)
+        echo "$GLOBAL_CONFIG"
+        ;;
+    *)
+        echo "Usage: jira-config {get|get-nested|set|validate|resolve|path} [args]"
+        exit 1
+        ;;
+esac
