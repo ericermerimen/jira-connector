@@ -59,25 +59,40 @@ curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$URL/rest/api/3/ser
 
 Save: `$PLUGIN_ROOT/bin/jira-config set jira_url "$URL"`
 
-## Step 3: Authentication
+## Step 3a: Email
+
+Ask: "What's your Jira email address?"
+
+Wait for user to answer. Save the email for use in Step 3c.
+
+## Step 3b: API Token
 
 Tell user:
+
+"You'll need a Jira API token. Here's how to create one:"
+
 1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
 2. Click "Create API token"
 3. Name it "claude-code" and copy the token
 
 Show warning: "This API token grants full access to your Atlassian account. For security, consider using a dedicated account with restricted permissions."
 
-Ask for email and token.
+Ask: "Paste your API token:"
 
-Validate:
+Wait for user to answer.
+
+## Step 3c: Validate Credentials
+
+Validate the email and token together:
 ```bash
-echo "$TOKEN" | curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 -u "${EMAIL}:$(cat -)" -H "Accept: application/json" "${URL}/rest/api/3/myself"
+printf -- '-u %s:%s\n' "$EMAIL" "$TOKEN" | curl --config - -s -o /dev/null -w "%{http_code}" --connect-timeout 10 -H "Accept: application/json" "${URL}/rest/api/3/myself"
 ```
-- 200: OK
+- 200: "Authenticated successfully."
 - 401: "Authentication failed. Double-check your email and token."
 - 403: "Authenticated but access denied. Your Jira permissions may be restricted."
 - Timeout: "Network timeout. Check your connection or VPN."
+
+If validation fails, ask the user to re-enter (go back to Step 3a).
 
 ## Step 4: Credential Storage
 
