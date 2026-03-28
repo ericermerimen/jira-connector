@@ -146,6 +146,20 @@ If transition_to is null (unconfigured type), show available transitions as opti
 
 **STOP and wait.**
 
+After the user picks a transition for an unconfigured type, ask a follow-up:
+
+Use AskUserQuestion:
+- Question: "Want me to remember this choice for all [issue type] tickets?"
+- A) "Yes, save it" with description "Next time you commit against a [type], I'll use this same action automatically."
+- B) "No, ask me each time" with description "Keep prompting for this ticket type."
+
+If A: save the rule to config:
+```bash
+$PLUGIN_ROOT/bin/jira-config set "workflow_ISSUETYPE_transition" "STATUS"
+$PLUGIN_ROOT/bin/jira-config set "workflow_ISSUETYPE_reassign" "skip"
+```
+This way the user only gets asked once per issue type, then it remembers.
+
 ---
 
 ## Step 3: Documentation Check

@@ -153,7 +153,7 @@ Proceed to Step 7.
 
 Use AskUserQuestion:
 - Question: "How would you like to configure the remaining settings (commit style, workflow rules, docs scaffold)?"
-- A) "Use sensible defaults" with description "Recommended. Conventional commits, ask-each-time for Jira transitions, no docs scaffold. You can change any of these later."
+- A) "Use sensible defaults" with description "Recommended. Conventional commits, learns your Jira workflow preferences on first use, no docs scaffold. You can change any of these later."
 - B) "Let me configure each one" with description "Walk through commit style, workflow rules, and docs structure step by step."
 
 **STOP and wait.**
@@ -165,7 +165,7 @@ $PLUGIN_ROOT/bin/jira-config set jira_comment_style "null"
 $PLUGIN_ROOT/bin/jira-config set docs_scaffold "skip"
 ```
 
-The absence of explicit workflow rules means /jira:commit will ask you each time what to do with a ticket. This is the safest default.
+With no workflow rules set, /jira:commit will ask what to do the first time it encounters each issue type (Bug, Story, Task, etc.) and offer to save your choice. After that, it remembers and applies the same action automatically.
 
 **If B:** Go through 7a, 7b, 7c, 7d.
 
