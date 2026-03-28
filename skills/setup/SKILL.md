@@ -81,18 +81,34 @@ Ask: "Paste your API token:"
 
 Wait for user to answer.
 
-## Step 3c: Validate Credentials
+## Step 3c: Store and Validate Credentials
 
-Validate the email and token together:
+First store the credentials temporarily so bin/jira-cred can validate them:
 ```bash
-printf -- '-u %s:%s\n' "$EMAIL" "$TOKEN" | curl --config - -s -o /dev/null -w "%{http_code}" --connect-timeout 10 -H "Accept: application/json" "${URL}/rest/api/3/myself"
+$PLUGIN_ROOT/bin/jira-config set jira_email "$EMAIL"
+$PLUGIN_ROOT/bin/jira-config set credential_method "env"
 ```
-- 200: "Authenticated successfully."
-- 401: "Authentication failed. Double-check your email and token."
-- 403: "Authenticated but access denied. Your Jira permissions may be restricted."
-- Timeout: "Network timeout. Check your connection or VPN."
+
+Then tell the user to set the env var for this session:
+```bash
+export JIRA_API_TOKEN="$TOKEN"
+export JIRA_EMAIL="$EMAIL"
+```
+
+Now validate using the existing script (this handles credential piping securely):
+```bash
+$PLUGIN_ROOT/bin/jira-cred validate
+```
+
+Check the exit code:
+- 0: "Authenticated successfully as [displayName]."
+- 1: "Authentication failed. Double-check your email and token."
+- 3: "Network timeout. Check your connection or VPN."
+- 4: "Authenticated but access denied. Your Jira permissions may be restricted."
 
 If validation fails, ask the user to re-enter (go back to Step 3a).
+
+IMPORTANT: Never run curl directly with credentials in command arguments. Always use `bin/jira-cred validate` which pipes credentials securely. Never display the API token in any output.
 
 ## Step 4: Credential Storage
 
