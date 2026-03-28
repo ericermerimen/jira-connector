@@ -1,12 +1,19 @@
 ---
 name: commit
 description: >
-  Commit changes to git and update Jira ticket. 4-step confirmed flow: draft commit message,
-  update Jira (comment + transition), check docs, then execute. Nothing fires without user approval.
+  Commit changes to git and optionally update Jira ticket. Confirmed flow: draft commit message,
+  update Jira (if ticket found), check docs, then execute. Nothing fires without user approval.
   Use when user says "/jira:commit" or asks to commit their changes.
 ---
 
 # /jira:commit -- Commit with Jira Integration
+
+## CRITICAL RULES
+
+1. **USE AskUserQuestion** for every checkpoint. Proper A/B/C selection UI, not plain text.
+2. **WAIT FOR ANSWERS.** After each AskUserQuestion, STOP. Do NOT continue until the user answers.
+3. **NEVER SHOW THE API TOKEN** in any output.
+4. **NO TICKET = STILL WORKS.** If no Jira ticket is found, skip Jira update gracefully and continue with git commit + docs check. The commit flow works perfectly without Jira.
 
 ## Plugin Root
 
@@ -27,14 +34,14 @@ PLUGIN_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || e
    $PLUGIN_ROOT/bin/jira-cred validate
    ```
    Handle by exit code:
-   - 0: continue
-   - 1: "Jira token is invalid. Regenerate at id.atlassian.com and run /jira:setup"
-   - 2: "Keychain access denied. Unlock your keychain or switch to env vars via /jira:setup"
-   - 3: "Can't reach Jira. Git commit will still work, Jira update will be skipped."
-   - 4: "Authenticated but access denied. Check your Jira permissions."
-   - 5: "No credentials stored. Run /jira:setup"
+   - 0: continue, set JIRA_AVAILABLE=true
+   - 1: "Jira token is invalid. Regenerate at id.atlassian.com and run /jira:setup." Set JIRA_AVAILABLE=false.
+   - 2: "Keychain access denied." Set JIRA_AVAILABLE=false.
+   - 3: "Can't reach Jira. Git commit will still work, Jira update will be skipped." Set JIRA_AVAILABLE=false.
+   - 4: "Access denied." Set JIRA_AVAILABLE=false.
+   - 5: "No credentials stored. Run /jira:setup." Set JIRA_AVAILABLE=false.
 
-   If exit 3 (network): set JIRA_AVAILABLE=false. Continue with git-only flow.
+   If JIRA_AVAILABLE=false: continue with git-only flow (Steps 1, 3, 4). Skip Step 2 entirely.
 
 3. Detect git state:
    ```bash
@@ -45,7 +52,9 @@ PLUGIN_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || e
    - If `git status` shows "UU" (unmerged): "Merge in progress. Resolve conflicts before committing." Stop.
    - If `.git/rebase-merge` or `.git/rebase-apply` exists: "Rebase in progress. Complete or abort." Stop.
 
-## Step 1: Git Commit [checkpoint]
+---
+
+## Step 1: Git Commit
 
 Run:
 ```bash
@@ -62,39 +71,44 @@ Detect ticket ID (in order):
    git rev-parse --abbrev-ref HEAD 2>/dev/null | grep -oE '[A-Z][A-Z0-9]+-[0-9]+'
    ```
 2. Check conversation context for recently mentioned ticket IDs
-3. If DETACHED=true or no ID found: ask user "No ticket ID detected. Enter one or skip?"
+3. If no ID found: set TICKET_FOUND=false (do NOT ask the user yet, handle in Step 2)
 
 Draft commit message using `commit_style` from config:
-- If null: use conventional commits format: `type(TICKET): description`
-- If set: follow the natural language instruction to format the message
+- If null: use conventional commits format
+- If ticket found: `type(TICKET): description`
+- If no ticket: `type: description` (no scope)
+- If custom style set: follow the natural language instruction
 
-Present to user:
-```
-Here's what I'll commit:
+Use AskUserQuestion:
+- Question: "Here's the commit I'll create. Look good?"
+- Show the draft message and file summary in the question text
+- A) "Commit as shown" with description showing the commit message
+- B) "Edit message" with description "I'll suggest changes via Other"
+- C) "Abort" with description "Cancel everything, no changes made"
 
-  feat(PROJ-100): add user profile caching
+**STOP and wait.**
 
-  Files: 3 changed, 47 insertions(+), 12 deletions(-)
-    src/components/UserCache.tsx
-    src/hooks/useUserCache.ts
-    src/api/user-cache.ts
-```
+If C (abort): stop entirely, nothing happens.
+If B: let user type new message, then re-present.
 
-Wait for user: confirm / edit message / abort.
-If abort: stop entirely, nothing happens.
+---
 
-## Step 2: Jira Update [checkpoint]
+## Step 2: Jira Update
 
-Skip this step entirely if JIRA_AVAILABLE=false (network issue from preamble).
+**If JIRA_AVAILABLE=false OR TICKET_FOUND=false:**
 
-If no ticket ID: ask "No ticket found. Enter one or skip Jira?"
-If skip: go to Step 3.
+Tell the user clearly:
+"No Jira ticket was detected for this commit. Skipping Jira update. We'll proceed with the git commit and then check if any docs need updating."
+
+Go directly to Step 3. Do NOT ask the user to enter a ticket ID unless they specifically mentioned one.
+
+**If JIRA_AVAILABLE=true AND TICKET_FOUND=true:**
 
 Fetch ticket:
 ```bash
 $PLUGIN_ROOT/bin/jira-api /rest/api/3/issue/TICKET_ID?fields=summary,status,issuetype,assignee,reporter
 ```
-If this fails (rate limit, network): "Couldn't fetch ticket. Skipping Jira update." Go to Step 3.
+If this fails (rate limit, network): "Couldn't fetch ticket details. Skipping Jira update." Go to Step 3.
 
 Extract issue type from response. Look up workflow rule in config:
 ```bash
@@ -102,68 +116,72 @@ $PLUGIN_ROOT/bin/jira-config get-nested "workflows.ISSUE_TYPE.transition_to"
 $PLUGIN_ROOT/bin/jira-config get-nested "workflows.ISSUE_TYPE.reassign_to"
 ```
 If no rule for this type, check `workflows.default`.
-If transition_to is null: ask user what to do.
 
 Check available transitions:
 ```bash
 $PLUGIN_ROOT/bin/jira-api /rest/api/3/issue/TICKET_ID/transitions
 ```
-If configured transition not in available list: "Transition to 'QA' not available. Available: [list]. Pick one or skip."
 
 Draft Jira comment using `jira_comment_style` from config:
 - If null: use structured format with Title, Changes (bullets), Result
 - If set: follow the natural language instruction
 
-Present to user:
-```
-Here's what I'll post to Jira PROJ-100:
+Use AskUserQuestion:
+- Question: Show the full Jira update plan (comment text + transition + reassignment)
+- A) "Post to Jira as shown" with description summarizing: comment + transition + reassign
+- B) "Edit comment" with description "I'll modify the comment text"
+- C) "Skip Jira update" with description "Just do the git commit, don't touch Jira"
 
-  Comment:
-    Title: Add user profile caching
-    Changes:
-    - Added UserCache component with configurable thresholds
-    - Created useUserCache hook for data fetching
-    - Wired up user-cache API endpoint
+If transition_to is null (unconfigured type), show available transitions as options instead:
+- Question: "What should happen to TICKET_ID (Type: Bug, Status: In Progress)?"
+- A) "Move to QA" (or whatever statuses are available)
+- B) "Move to Done"
+- C) "Just add a comment, no transition"
+- D) "Skip Jira entirely"
 
-  Action: Transition to QA, Reassign to John (reporter)
-```
+**STOP and wait.**
 
-Wait for user: confirm / edit comment / edit action / skip Jira.
+---
 
-## Step 3: Documentation Check [checkpoint]
+## Step 3: Documentation Check
 
 Run:
 ```bash
 $PLUGIN_ROOT/bin/docs-check --quick
 ```
 
-If exit 0 (matches found): show affected docs and the matching reference.
-```
-These docs reference files you changed:
+**If exit 0 (matches found):**
 
-  docs/architecture/overview.md:47
-    references: src/api/user-cache.ts
+Use AskUserQuestion:
+- Question: "These docs reference files you changed: [list files + line references]. Want me to review and propose updates?"
+- A) "Review and suggest updates" with description "I'll read the docs and propose specific edits"
+- B) "Skip docs" with description "I'll handle docs separately"
 
-Want me to review and propose updates?
-```
+**STOP and wait.**
 
-If exit 1 (no matches): "No docs reference your changed files. Skip or review anyway?"
+If A: read each affected doc, propose specific edits showing a diff, then use AskUserQuestion per doc:
+- A) "Apply this edit"
+- B) "Skip this doc"
 
-If user wants updates: read the affected doc, propose specific edits showing a diff, ask for confirmation per edit.
+**If exit 1 (no matches):**
 
-Wait for user: approve edits / edit / skip.
+Tell user: "No docs reference your changed files. Moving to commit."
+
+Go to Step 4.
+
+---
 
 ## Step 4: Execute
 
-Run all confirmed actions:
+Run all confirmed actions in order:
 
-1. Git commit:
+1. **Git commit** (always):
    ```bash
    git add <confirmed files>
    git commit -m "<confirmed message>"
    ```
 
-2. Jira update (if confirmed):
+2. **Jira update** (only if confirmed in Step 2):
    ```bash
    # Post comment
    $PLUGIN_ROOT/bin/jira-api /rest/api/3/issue/TICKET_ID/comment -X POST -d '<comment JSON>'
@@ -174,7 +192,7 @@ Run all confirmed actions:
    ```
    If any Jira call fails: "Commit succeeded. Jira update failed: [error]. You can retry manually."
 
-3. Doc updates (if confirmed): write the approved edits.
+3. **Doc updates** (only if confirmed in Step 3): write the approved edits.
 
 Report results:
 ```
@@ -184,12 +202,21 @@ Done:
   Updated: docs/architecture/overview.md
 ```
 
+Or for no-ticket commits:
+```
+Done:
+  Committed: fix: resolve button alignment on mobile
+  Jira: skipped (no ticket)
+  Docs: no affected docs found
+```
+
 ## Edge Cases
 
 - Abort at step 1: nothing happens
+- No ticket found: skip Jira, proceed with commit + docs
 - Skip Jira (step 2): git commit + doc check only
 - Skip docs (step 3): git commit + Jira only
 - Network fails mid-flow: git commit succeeds, Jira shows specific error
-- No docs/ folder: step 3 shows "No docs/ found. Skip."
-- Detached HEAD: prompt for ticket ID in step 1
+- No docs/ folder: step 3 reports "No docs found" and proceeds
+- Detached HEAD: commit works, no ticket ID from branch (no-ticket flow)
 - Merge/rebase in progress: abort before step 1 with clear message

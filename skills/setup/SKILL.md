@@ -8,177 +8,245 @@ description: >
 
 # /jira:setup -- Jira Connector Setup Wizard
 
-Walk the user through configuring the jira-connector plugin step by step. This is idempotent: safe to re-run to change any setting.
+Interactive setup wizard. Each step uses AskUserQuestion for proper selection UI.
+
+## CRITICAL RULES
+
+1. **ONE STEP AT A TIME.** Never combine steps or skip ahead.
+2. **USE AskUserQuestion** for every interaction. This gives proper A/B/C selection UI with "Other" for free text. NEVER use plain text questions that the user has to type answers to.
+3. **WAIT FOR ANSWERS.** After each AskUserQuestion, STOP your response entirely. Do NOT continue until the user answers.
+4. **NEVER SHOW THE API TOKEN.** Never in bash commands, messages, or output. Pipe via stdin only.
+5. **NEVER AUTO-DECIDE.** Do not say "I'll default to X" or "I'll go with X while you confirm." Present choices and WAIT.
 
 ## Plugin Root
 
-Determine the plugin root directory (where bin/ scripts live):
-
 ```bash
 PLUGIN_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")"/../../.. && pwd)"
-echo "PLUGIN_ROOT: $PLUGIN_ROOT"
 ls "$PLUGIN_ROOT/bin/jira-config" >/dev/null 2>&1 || { echo "ERROR: Cannot find bin/jira-config"; exit 1; }
 ```
 
-Use `$PLUGIN_ROOT/bin/` to call all scripts.
+---
 
 ## Step 1: Prerequisites
 
-Run:
+Run silently:
 ```bash
 bash --version | head -1
 which curl jq git 2>/dev/null
 $PLUGIN_ROOT/bin/jira-cred detect-env
 ```
 
-Check:
-- bash version >= 3.2
-- curl, jq, git all found
-- If environment is `windows-native` (detected by absence of bash or presence of PowerShell): tell user "Windows requires WSL2 or Git Bash. Install WSL2: https://learn.microsoft.com/en-us/windows/wsl/install" and stop.
-- If any tool missing, suggest install command based on OS:
-  - macOS: `brew install jq`
-  - Debian/Ubuntu: `sudo apt install jq curl`
-  - Fedora/RHEL: `sudo dnf install jq curl`
-  - Alpine: `apk add jq curl bash`
-  - Arch: `sudo pacman -S jq curl`
+If any tool missing, show install suggestions. If native Windows, tell user to install WSL2 and stop.
 
-## Step 2: Jira Instance
+If all good, tell user: "Prerequisites OK. Detected environment: [env type]." Then immediately proceed to Step 2.
 
-If re-running and config exists, show current value and ask "Keep [current] or enter new URL?"
+---
 
-Ask: "What's your Jira Cloud URL? (e.g., https://mycompany.atlassian.net)"
+## Step 2: Jira URL
 
-Validate format matches `https://*.atlassian.net`.
+Use AskUserQuestion:
+- Question: "What's your Jira Cloud URL?"
+- Options:
+  - A) A label showing example format like "https://mycompany.atlassian.net" with description "Enter your company's Jira Cloud URL"
+- (The user will pick "Other" and type their actual URL)
 
-Validate connectivity:
-```bash
-curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$URL/rest/api/3/serverInfo"
-```
-- 200: OK
-- Other: "Can't reach that URL. Check the address and your network/VPN."
+When they answer:
+- Validate format: must match `https://*.atlassian.net`
+- Validate connectivity: `curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$URL/rest/api/3/serverInfo"`
+- If fails: tell user and use AskUserQuestion again
+- If OK: save with `$PLUGIN_ROOT/bin/jira-config set jira_url "$URL"`, proceed to Step 3
 
-Save: `$PLUGIN_ROOT/bin/jira-config set jira_url "$URL"`
+---
 
-## Step 3a: Email
+## Step 3: Email
 
-Ask: "What's your Jira email address?"
+Use AskUserQuestion:
+- Question: "What's your Jira email address?"
+- Options:
+  - A) A label like "user@company.com" with description "The email you use to log into Jira"
+- (The user will pick "Other" and type their actual email)
 
-Wait for user to answer. Save the email for use in Step 3c.
+Save the email for later. Proceed to Step 4.
 
-## Step 3b: API Token
+---
 
-Tell user:
+## Step 4: API Token
 
-"You'll need a Jira API token. Here's how to create one:"
+First, show these instructions as a message (NOT as a question):
+
+"You'll need a Jira API token. Here's how to create one:
 
 1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
-2. Click "Create API token"
-3. Name it "claude-code" and copy the token
+2. Click 'Create API token'
+3. Name it 'claude-code' and copy the token
 
-Show warning: "This API token grants full access to your Atlassian account. For security, consider using a dedicated account with restricted permissions."
+Note: This token grants full access to your Atlassian account. Consider using a dedicated account with restricted permissions."
 
-Ask: "Paste your API token:"
+Then use AskUserQuestion:
+- Question: "Paste your API token below (select Other and paste it):"
+- Options:
+  - A) "I've copied the token" with description "Select Other below and paste your token"
+- (The user will pick "Other" and paste their token)
 
-Wait for user to answer.
+Save the token in memory. NEVER display it again. Proceed to Step 5.
 
-## Step 3c: Store and Validate Credentials
+---
 
-First store the credentials temporarily so bin/jira-cred can validate them:
+## Step 5: Validate Credentials
+
+Set env vars and validate (run silently):
 ```bash
+export JIRA_API_TOKEN="<token>"
+export JIRA_EMAIL="<email>"
 $PLUGIN_ROOT/bin/jira-config set jira_email "$EMAIL"
 $PLUGIN_ROOT/bin/jira-config set credential_method "env"
-```
-
-Then tell the user to set the env var for this session:
-```bash
-export JIRA_API_TOKEN="$TOKEN"
-export JIRA_EMAIL="$EMAIL"
-```
-
-Now validate using the existing script (this handles credential piping securely):
-```bash
 $PLUGIN_ROOT/bin/jira-cred validate
 ```
 
-Check the exit code:
-- 0: "Authenticated successfully as [displayName]."
-- 1: "Authentication failed. Double-check your email and token."
-- 3: "Network timeout. Check your connection or VPN."
-- 4: "Authenticated but access denied. Your Jira permissions may be restricted."
+SECURITY: `export` is a shell builtin, safe. But NEVER pass the token as a CLI argument to any external command.
 
-If validation fails, ask the user to re-enter (go back to Step 3a).
+- Exit 0: "Authenticated successfully." Proceed to Step 6.
+- Exit 1: "Authentication failed." Use AskUserQuestion:
+  - Question: "Authentication failed. What would you like to do?"
+  - A) "Re-enter email and token" -- go back to Step 3
+  - B) "Check my Jira URL" -- go back to Step 2
+  - C) "Skip for now" -- skip auth, proceed with partial setup
+- Exit 3: "Network timeout." Same retry options.
 
-IMPORTANT: Never run curl directly with credentials in command arguments. Always use `bin/jira-cred validate` which pipes credentials securely. Never display the API token in any output.
+---
 
-## Step 4: Credential Storage
+## Step 6: Credential Storage
 
 Run: `$PLUGIN_ROOT/bin/jira-cred detect-env`
 
-Based on environment:
-- `macos-desktop`: Recommend Keychain. Offer env vars as alternative with warning.
-- `macos-headless`: Default to env vars. Explain keychain may not work in SSH sessions.
-- `linux-desktop`: Recommend secret-tool. Offer env vars as alternative.
-- `linux-headless`, `windows-wsl`, `windows-gitbash`: Default to env vars. Explain why.
+**For `macos-desktop`, use AskUserQuestion:**
+- Question: "Where should I store your Jira credentials?"
+- A) "macOS Keychain" with description "Recommended. Encrypted system storage, persists across sessions."
+- B) "Environment variables" with description "Less secure. Visible in process listings. You'll need to set them in your shell profile."
 
-Save method: `$PLUGIN_ROOT/bin/jira-config set credential_method "$METHOD"`
+**For `linux-desktop`, use AskUserQuestion:**
+- Question: "Where should I store your Jira credentials?"
+- A) "GNOME Keyring / secret-tool" with description "Recommended. Encrypted system storage."
+- B) "Environment variables" with description "Less secure. Set in .bashrc or .env file."
 
-Store credentials: `$PLUGIN_ROOT/bin/jira-cred set "$EMAIL" "$TOKEN"`
+**For headless/WSL/Git Bash:**
+- No question needed. Tell user: "Your environment doesn't support a system keychain. Using environment variables."
 
-Verify: `$PLUGIN_ROOT/bin/jira-cred validate`
+After choice is made, save and store:
+```bash
+$PLUGIN_ROOT/bin/jira-config set credential_method "$METHOD"
+echo "$TOKEN" | $PLUGIN_ROOT/bin/jira-cred set "$EMAIL"
+$PLUGIN_ROOT/bin/jira-cred validate
+```
 
-## Steps 5-8: Optional Configuration
+Proceed to Step 7.
 
-Ask: "Use sensible defaults for the rest? You can reconfigure anytime by re-running /jira:setup."
+---
 
-**If yes:** Set defaults and skip to Step 8:
+## Step 7: Optional Configuration
+
+Use AskUserQuestion:
+- Question: "How would you like to configure the remaining settings (commit style, workflow rules, docs scaffold)?"
+- A) "Use sensible defaults" with description "Recommended. Conventional commits, ask-each-time for Jira transitions, no docs scaffold. You can change any of these later."
+- B) "Let me configure each one" with description "Walk through commit style, workflow rules, and docs structure step by step."
+
+**STOP and wait.**
+
+**If A:** Set defaults and skip to Step 8:
 ```bash
 $PLUGIN_ROOT/bin/jira-config set commit_style "null"
 $PLUGIN_ROOT/bin/jira-config set jira_comment_style "null"
 $PLUGIN_ROOT/bin/jira-config set docs_scaffold "skip"
 ```
-Write default workflow: `workflows: { default: { transition_to: null, reassign_to: skip } }`
 
-**If no:** Walk through each:
+**If B:** Go through 7a, 7b, 7c, 7d.
 
-### Step 5: Workflow Rules
+---
 
-Fetch issue types: `$PLUGIN_ROOT/bin/jira-api /rest/api/3/issuetype`
+### Step 7a: Workflow Rules
 
-For each common type (Bug, Story, Task), ask:
-- "When you commit against a [Type], what should happen?"
-  - Transition to: [show available statuses]
-  - Reassign to: reporter / author / specific person / skip
-  - Just comment, no transition
-  - Skip entirely
+Try to fetch issue types: `$PLUGIN_ROOT/bin/jira-api /rest/api/3/issuetype`
 
-If API call fails: "Couldn't fetch issue types. Using 'ask each time' as default. You can configure this later."
+If API fails: "Couldn't fetch issue types. Using 'ask each time' as default." Skip to 7b.
 
-### Step 6: Commit Style
+Do NOT show a big status table. Handle ONE issue type at a time with its own AskUserQuestion.
 
-Ask: "Want to customize your commit message format? Default is conventional commits (feat/fix/refactor)."
+**7a-i: Bug workflow**
 
-If yes: "Describe your preferred format in plain English. Example: 'conventional commit in English, followed by Chinese translation on next line'"
+Use AskUserQuestion:
+- Question: "When you commit against a Bug, what should happen?"
+- A) "Move to QA and reassign to reporter" with description "Common for bug fixes. Transitions the ticket to QA status and reassigns to whoever reported it."
+- B) "Move to QA, keep assignee" with description "Transitions to QA but doesn't change who it's assigned to."
+- C) "Just add a comment" with description "Posts what you did to the ticket. No status change."
+- D) "Ask me each time" with description "Prompt during /jira:commit so you can decide per-ticket."
 
-Save to config.
+**STOP and wait.**
 
-### Step 7: Docs Scaffold
+**7a-ii: Story workflow**
 
-Ask: "Want me to set up a docs structure for this project?"
-- A) Minimal: architecture/, decisions/, learnings/
-- B) Standard: + guides/, operations/
-- C) Skip
+Use AskUserQuestion:
+- Question: "When you commit against a Story, what should happen?"
+- A) "Move to Done" with description "Marks the story as complete."
+- B) "Move to Code Review" with description "Signals the story is ready for review."
+- C) "Just add a comment" with description "Posts what you did. No status change."
+- D) "Ask me each time" with description "Prompt during /jira:commit."
 
-If A or B: create the directories and a README.md index.
+**STOP and wait.**
 
-### Step 8: Write Config and Verify
+**7a-iii: Task workflow**
 
-Save all settings, detect OS:
+Use AskUserQuestion:
+- Question: "When you commit against a Task, what should happen?"
+- A) "Move to Done" with description "Marks the task as complete."
+- B) "Just add a comment" with description "Posts what you did. No status change."
+- C) "Ask me each time" with description "Prompt during /jira:commit."
+
+**STOP and wait.**
+
+Note: If a user picks a transition status that doesn't exist on their board, /jira:commit will detect this at runtime and show available options. The setup doesn't need to validate every status name.
+
+### Step 7b: Commit Style
+
+Use AskUserQuestion:
+- Question: "How should commit messages be formatted?"
+- A) "Conventional commits" with description "Recommended. Format: feat(TICKET): description, fix(TICKET): description"
+- B) "Custom format" with description "Describe your format in plain English (e.g., 'English summary followed by Chinese translation')"
+
+If B: use AskUserQuestion to let them type their custom format instruction.
+
+### Step 7c: Jira Comment Style
+
+Use AskUserQuestion:
+- Question: "How should Jira comments be formatted when you commit?"
+- A) "Structured" with description "Recommended. Title, changes list, and result/new behavior"
+- B) "Custom format" with description "Describe your preferred format in plain English"
+
+If B: use AskUserQuestion to let them type their custom format.
+
+### Step 7d: Docs Scaffold
+
+Use AskUserQuestion:
+- Question: "Want to set up a docs structure for this project?"
+- A) "Minimal" with description "Creates docs/ with architecture/, decisions/, learnings/ folders"
+- B) "Standard" with description "Minimal + guides/ and operations/ folders"
+- C) "Skip" with description "I already have docs or don't want this"
+
+If A or B: create the folders and a README.md index.
+
+---
+
+## Step 8: Finalize
+
+Run silently:
 ```bash
 $PLUGIN_ROOT/bin/jira-config set os "$(uname -s | tr '[:upper:]' '[:lower:]')"
+$PLUGIN_ROOT/bin/jira-config validate
 ```
 
-Validate: `$PLUGIN_ROOT/bin/jira-config validate`
+Show a summary table of all configured values (NEVER show the token, just show "stored in [keychain/env vars]").
 
-Show summary of all configured values.
-
-Tell user: "Setup complete. Try '/jira:commit' after your next change, or mention a ticket ID and the jira-reader agent will pick it up automatically."
+Tell user: "Setup complete! Here's what you can do next:
+- `/jira:commit` after making changes to commit + update Jira
+- `/jira:docs` before PRs to sync documentation
+- Mention a ticket ID (like PROJ-100) and the jira-reader agent fetches it automatically
+- Re-run `/jira:setup` anytime to change settings"

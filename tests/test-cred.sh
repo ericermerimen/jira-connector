@@ -78,7 +78,7 @@ export JIRA_API_TOKEN="test-token-123"
 
 # Test: set in env mode prints instructions
 echo "-- set in env mode --"
-result="$("$BIN_DIR/jira-cred" set "user@test.com" "tok-123")"
+result="$(echo "tok-123" | "$BIN_DIR/jira-cred" set "user@test.com")"
 echo "$result" | grep -q "JIRA_EMAIL" && {
     echo "  PASS: set in env mode shows env var instructions"
     PASS=$((PASS + 1))

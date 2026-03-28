@@ -126,8 +126,21 @@ env_get() {
 # Public: store credentials
 cmd_set() {
     local email="${1:-}"
-    local token="${2:-}"
-    [[ -z "$email" || -z "$token" ]] && { echo "Usage: jira-cred set <email> <token>"; exit 1; }
+    [[ -z "$email" ]] && { echo "Usage: jira-cred set <email>  (token is read from stdin)" >&2; exit 1; }
+
+    # Read token from stdin to avoid it appearing in ps/terminal output
+    local token
+    if [[ -t 0 ]]; then
+        # Interactive: prompt
+        echo -n "Enter API token: " >&2
+        read -rs token
+        echo "" >&2
+    else
+        # Piped: read from stdin
+        read -r token
+    fi
+
+    [[ -z "$token" ]] && { echo "ERROR: No token provided" >&2; exit 1; }
 
     local method
     method="$(get_cred_method)"
@@ -219,7 +232,7 @@ cmd_delete() {
 
 # Main dispatch
 case "${1:-}" in
-    set)        cmd_set "${2:-}" "${3:-}" ;;
+    set)        cmd_set "${2:-}" ;;
     get)        cmd_get "${2:-}" ;;
     validate)   cmd_validate ;;
     detect-env) detect_environment ;;
