@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_cleanup_files=()
+cleanup() { rm -f "${_cleanup_files[@]}"; }
+trap cleanup EXIT
+
 # jira-api: Authenticated Jira REST API wrapper with retry
 # Usage:
 #   jira-api <endpoint>                          # GET request
@@ -25,10 +29,18 @@ INITIAL_BACKOFF=2
 
 # Load config
 get_config_val() {
-    "$SCRIPT_DIR/jira-config" get "$1" 2>/dev/null || {
-        # Try resolved config (global + project merge)
-        "$SCRIPT_DIR/jira-config" resolve 2>/dev/null | grep -E "^$1:" | head -1 | sed -E 's/^[^:]+:\s*//'
-    }
+    local val
+    val="$("$SCRIPT_DIR/jira-config" get "$1" 2>/dev/null)" || true
+    if [[ -n "$val" ]]; then
+        echo "$val"
+    else
+        "$SCRIPT_DIR/jira-config" resolve 2>/dev/null | while IFS= read -r line; do
+            if [[ "$line" == "$1:"* ]]; then
+                echo "$line" | sed -E 's/^[^:]+:[[:space:]]*//'
+                return
+            fi
+        done
+    fi
 }
 
 main() {
@@ -57,6 +69,7 @@ main() {
     while [[ $attempt -le $MAX_RETRIES ]]; do
         local tmpfile http_code
         tmpfile="$(mktemp)"
+        _cleanup_files+=("$tmpfile")
 
         # Pipe credentials to curl via --config - to avoid ps visibility
         http_code="$(printf -- '-u %s:%s\n' "$email" "$token" | curl --config - \
@@ -66,7 +79,6 @@ main() {
             -H "Content-Type: application/json" \
             "$@" \
             "$full_url" 2>/dev/null)" || {
-            rm -f "$tmpfile"
             echo "ERROR: Network timeout" >&2
             exit 3
         }
@@ -74,11 +86,9 @@ main() {
         case "$http_code" in
             2*)
                 cat "$tmpfile"
-                rm -f "$tmpfile"
                 return 0
                 ;;
             429)
-                rm -f "$tmpfile"
                 if [[ $attempt -lt $MAX_RETRIES ]]; then
                     echo "Rate limited. Retrying in ${backoff}s... (attempt $((attempt + 1))/$MAX_RETRIES)" >&2
                     sleep "$backoff"
@@ -90,24 +100,20 @@ main() {
                 fi
                 ;;
             401)
-                rm -f "$tmpfile"
                 echo "ERROR: Authentication failed (401)" >&2
                 exit 1
                 ;;
             403)
-                rm -f "$tmpfile"
                 echo "ERROR: Access denied (403)" >&2
                 exit 4
                 ;;
             404)
-                rm -f "$tmpfile"
                 echo "ERROR: Not found (404)" >&2
                 exit 1
                 ;;
             *)
                 local body
                 body="$(cat "$tmpfile")"
-                rm -f "$tmpfile"
                 echo "ERROR: HTTP $http_code: $body" >&2
                 exit 1
                 ;;

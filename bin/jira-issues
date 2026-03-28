@@ -21,7 +21,7 @@ search_jql() {
 
     while [[ $start_at -lt $total ]]; do
         local encoded_jql
-        encoded_jql="$(echo "$jql" | sed 's/ /+/g; s/"/%22/g; s/=/%3D/g; s/(/%28/g; s/)/%29/g; s/!/%21/g')"
+        encoded_jql="$(printf '%s' "$jql" | jq -Rr @uri)"
 
         local result
         result="$("$SCRIPT_DIR/jira-api" "/rest/api/3/search?jql=${encoded_jql}&startAt=${start_at}&maxResults=${max_per_page}&fields=summary,status,assignee,reporter,priority,issuetype,created,updated" 2>/dev/null)" || {

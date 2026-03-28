@@ -100,12 +100,12 @@ full_scan() {
 
     while IFS= read -r doc_file; do
         # Extract file paths from markdown (src/..., lib/..., etc.)
-        grep -oE '(src|lib|app|components|hooks|api|pages|bin)/[a-zA-Z0-9_./-]+\.(ts|tsx|js|jsx|py|sh|md)' "$doc_file" 2>/dev/null | sort -u | while IFS= read -r ref_path; do
+        while IFS= read -r ref_path; do
             if [[ ! -f "$git_root/$ref_path" ]]; then
                 echo "$doc_file: references $ref_path (file not found)"
                 found=1
             fi
-        done
+        done < <(grep -oE '(src|lib|app|components|hooks|api|pages|bin)/[a-zA-Z0-9_./-]+\.(ts|tsx|js|jsx|py|sh|md)' "$doc_file" 2>/dev/null | sort -u)
     done < <(find "$docs_dir" -name '*.md' -type f 2>/dev/null)
 
     # Check README index for dead links
@@ -113,7 +113,7 @@ full_scan() {
     if [[ -f "$readme" ]]; then
         echo ""
         echo "# Dead links in README.md:"
-        grep -oE '\[.*?\]\((.*?)\)' "$readme" 2>/dev/null | grep -oE '\(.*?\)' | tr -d '()' | while IFS= read -r link; do
+        while IFS= read -r link; do
             # Skip external URLs
             [[ "$link" == http* ]] && continue
             [[ "$link" == \#* ]] && continue
@@ -122,7 +122,7 @@ full_scan() {
                 echo "$readme: dead link to $link"
                 found=1
             fi
-        done
+        done < <(grep -oE '\[.*?\]\((.*?)\)' "$readme" 2>/dev/null | grep -oE '\(.*?\)' | tr -d '()')
     fi
 
     return $((found == 0 ? 1 : 0))
