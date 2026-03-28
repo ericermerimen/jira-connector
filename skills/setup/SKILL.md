@@ -58,10 +58,10 @@ Ask the user in plain text:
 
 When they answer:
 - Validate format: must match `https://*.atlassian.net`
-- Validate connectivity: `curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$URL/rest/api/3/serverInfo"`
-- Accept both 200 and 401 as "URL is reachable and valid" (401 means the server responded but needs auth, which is expected before credentials are stored)
-- Only fail on timeouts, DNS errors, or non-HTTP errors
-- If fails: tell user and use AskUserQuestion again
+- Check the host resolves: `curl -s -o /dev/null --connect-timeout 10 --head "$URL" 2>&1`
+  - If curl exits 0: "URL looks good." (We'll verify it fully works when we test your credentials in Step 5.)
+  - If curl exits non-zero (DNS failure, timeout, connection refused): "Can't reach that URL. Check the address and your network/VPN."
+- Do NOT try to hit a Jira API endpoint here. We don't have credentials yet. The real validation happens in Step 5.
 - If OK: save with `$PLUGIN_ROOT/bin/jira-config set jira_url "$URL"`, proceed to Step 3
 
 ---
