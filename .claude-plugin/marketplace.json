@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "jira-connector",
+  "metadata": {
+    "description": "Jira ticket reading, git commit workflows, and documentation maintenance for Claude Code."
+  },
+  "owner": {
+    "name": "Eric Er"
+  },
+  "plugins": [
+    {
+      "name": "jira-connector",
+      "description": "Jira ticket reading, git commit workflows, and documentation maintenance for Claude Code. Supports Jira Cloud on macOS, Linux, and Windows (WSL2/Git Bash).",
+      "version": "0.1.0",
+      "author": {
+        "name": "Eric Er"
+      },
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/ericermerimen/jira-connector",
+      "tags": ["jira", "git", "commit", "documentation", "workflow", "atlassian"]
+    }
+  ]
+}
