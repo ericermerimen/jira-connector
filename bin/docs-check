@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# docs-check: Scan docs/ for references to changed files
+# Usage:
+#   docs-check --quick               # Path grep only (for commit-time)
+#   docs-check --full                # Path grep + stale reference detection (for PR-time)
+#   docs-check --quick --base <ref>  # Compare against specific git ref
+#
+# Output: One line per match: <doc-file>:<line-number>: <matched-reference>
+# Exit 0 if matches found, exit 1 if no matches, exit 2 on error.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+MODE="quick"
+BASE_REF=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --quick) MODE="quick"; shift ;;
+        --full)  MODE="full"; shift ;;
+        --base)  BASE_REF="${2:-}"; shift 2 ;;
+        *)       echo "Usage: docs-check {--quick|--full} [--base <ref>]"; exit 2 ;;
+    esac
+done
+
+# Get docs path from config, validate it
+get_docs_path() {
+    local docs_path
+    docs_path="$("$SCRIPT_DIR/jira-config" get docs_path 2>/dev/null || echo "docs")"
+    [[ -z "$docs_path" ]] && docs_path="docs"
+
+    # Security: reject absolute paths and traversal
+    if [[ "$docs_path" == /* ]] || echo "$docs_path" | grep -qE '\.\.'; then
+        echo "ERROR: Invalid docs_path: $docs_path" >&2
+        exit 2
+    fi
+
+    local git_root
+    git_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+        echo "ERROR: Not in a git repository" >&2
+        exit 2
+    }
+
+    local full_path="$git_root/$docs_path"
+    if [[ ! -d "$full_path" ]]; then
+        # No docs dir, no matches
+        exit 1
+    fi
+
+    echo "$full_path"
+}
+
+# Get changed files
+get_changed_files() {
+    if [[ -n "$BASE_REF" ]]; then
+        git diff --name-only "$BASE_REF" 2>/dev/null
+    else
+        # Default: staged + unstaged changes
+        git diff --name-only HEAD 2>/dev/null || git diff --name-only 2>/dev/null
+    fi
+}
+
+# Quick mode: grep docs for exact file path references
+quick_scan() {
+    local docs_dir="$1"
+    local found=0
+
+    while IFS= read -r changed_file; do
+        [[ -z "$changed_file" ]] && continue
+
+        # Search docs for references to this file path
+        local matches
+        matches="$(grep -rn "$changed_file" "$docs_dir" --include='*.md' 2>/dev/null)" || true
+
+        if [[ -n "$matches" ]]; then
+            while IFS= read -r match; do
+                echo "$match"
+                found=1
+            done <<< "$matches"
+        fi
+    done < <(get_changed_files)
+
+    return $((found == 0 ? 1 : 0))
+}
+
+# Full mode: quick scan + stale reference detection
+full_scan() {
+    local docs_dir="$1"
+    local git_root
+    git_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+    local found=0
+
+    # Run quick scan first
+    quick_scan "$docs_dir" && found=1
+
+    # Check for stale references: file paths in docs that don't exist
+    echo ""
+    echo "# Stale references (files referenced in docs but not found on disk):"
+
+    while IFS= read -r doc_file; do
+        # Extract file paths from markdown (src/..., lib/..., etc.)
+        grep -oE '(src|lib|app|components|hooks|api|pages|bin)/[a-zA-Z0-9_./-]+\.(ts|tsx|js|jsx|py|sh|md)' "$doc_file" 2>/dev/null | sort -u | while IFS= read -r ref_path; do
+            if [[ ! -f "$git_root/$ref_path" ]]; then
+                echo "$doc_file: references $ref_path (file not found)"
+                found=1
+            fi
+        done
+    done < <(find "$docs_dir" -name '*.md' -type f 2>/dev/null)
+
+    # Check README index for dead links
+    local readme="$docs_dir/README.md"
+    if [[ -f "$readme" ]]; then
+        echo ""
+        echo "# Dead links in README.md:"
+        grep -oE '\[.*?\]\((.*?)\)' "$readme" 2>/dev/null | grep -oE '\(.*?\)' | tr -d '()' | while IFS= read -r link; do
+            # Skip external URLs
+            [[ "$link" == http* ]] && continue
+            [[ "$link" == \#* ]] && continue
+            local resolved="$docs_dir/$link"
+            if [[ ! -f "$resolved" && ! -d "$resolved" ]]; then
+                echo "$readme: dead link to $link"
+                found=1
+            fi
+        done
+    fi
+
+    return $((found == 0 ? 1 : 0))
+}
+
+docs_dir="$(get_docs_path)" || exit $?
+
+case "$MODE" in
+    quick) quick_scan "$docs_dir" ;;
+    full)  full_scan "$docs_dir" ;;
+esac
