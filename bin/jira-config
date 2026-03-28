@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_cleanup_files=()
+cleanup() { rm -f "${_cleanup_files[@]}"; }
+trap cleanup EXIT
+
 # jira-config: Read, write, and validate ~/.jira-connector/config.yaml
 # Usage:
 #   jira-config get <key>              # Read a top-level key
@@ -32,7 +36,12 @@ read_yaml_key() {
         return 1
     fi
     # Simple top-level key extraction (handles: key: value, key: "value")
-    grep -E "^${key}:" "$file" 2>/dev/null | head -1 | sed -E 's/^[^:]+:\s*//' | sed -E 's/^["'"'"']|["'"'"']$//g' | sed 's/\s*$//'
+    while IFS= read -r line; do
+        if [[ "$line" == "${key}:"* ]]; then
+            printf '%s\n' "$line" | sed -E 's/^[^:]+:\s*//' | sed -E 's/^["'"'"']|["'"'"']$//g' | sed 's/\s*$//'
+            return
+        fi
+    done < "$file"
 }
 
 # Read nested key like workflows.Bug.transition_to
@@ -60,7 +69,7 @@ read_yaml_nested() {
     local block=""
     while IFS= read -r line; do
         if [[ $in_block -eq 0 ]]; then
-            if echo "$line" | grep -qE "^${target_key}:"; then
+            if [[ "$line" == "${target_key}:"* ]]; then
                 in_block=1
                 indent=""
             fi
@@ -85,9 +94,9 @@ read_yaml_nested() {
         # Recursively parse the remaining path in the extracted block
         local tmpfile
         tmpfile="$(mktemp)"
+        _cleanup_files+=("$tmpfile")
         echo "$block" > "$tmpfile"
         read_yaml_nested "$tmpfile" "$remaining"
-        rm -f "$tmpfile"
     fi
 }
 
@@ -102,6 +111,7 @@ write_yaml_key() {
     if [[ ! -f "$file" ]]; then
         local newfile
         newfile="$(mktemp)"
+        _cleanup_files+=("$newfile")
         echo "${key}: ${value}" > "$newfile"
         chmod 600 "$newfile" 2>/dev/null || true
         mv "$newfile" "$file"
@@ -110,9 +120,16 @@ write_yaml_key() {
 
     local tmpfile
     tmpfile="$(mktemp)"
-    if grep -qE "^${key}:" "$file" 2>/dev/null; then
+    _cleanup_files+=("$tmpfile")
+    local found=0
+    while IFS= read -r line; do
+        if [[ "$line" == "${key}:"* ]]; then
+            found=1
+        fi
+    done < "$file"
+    if [[ $found -eq 1 ]]; then
         while IFS= read -r line; do
-            if printf '%s\n' "$line" | grep -qE "^${key}:"; then
+            if [[ "$line" == "${key}:"* ]]; then
                 printf '%s\n' "${key}: ${value}"
             else
                 printf '%s\n' "$line"
@@ -132,7 +149,7 @@ validate_config() {
     local errors=0
 
     if [[ ! -f "$file" ]]; then
-        echo "ERROR: Config file not found: $file"
+        echo "ERROR: Config file not found: $file" >&2
         return 1
     fi
 
@@ -141,7 +158,7 @@ validate_config() {
     url="$(read_yaml_key "$file" "jira_url")"
     if [[ -n "$url" ]]; then
         if ! echo "$url" | grep -qE '^https://[a-zA-Z0-9.-]+\.atlassian\.net$'; then
-            echo "ERROR: jira_url must match https://*.atlassian.net (got: $url)"
+            echo "ERROR: jira_url must match https://*.atlassian.net (got: $url)" >&2
             errors=$((errors + 1))
         fi
     fi
@@ -151,12 +168,12 @@ validate_config() {
     email="$(read_yaml_key "$file" "jira_email")"
     if [[ -n "$email" ]]; then
         if ! echo "$email" | grep -qE '^[^@]+@[^@]+$'; then
-            echo "ERROR: jira_email must be a valid email (got: $email)"
+            echo "ERROR: jira_email must be a valid email (got: $email)" >&2
             errors=$((errors + 1))
         fi
         # Check for shell metacharacters
         if echo "$email" | grep -qE '[;|&$`\\(){}]'; then
-            echo "ERROR: jira_email contains shell metacharacters"
+            echo "ERROR: jira_email contains shell metacharacters" >&2
             errors=$((errors + 1))
         fi
     fi
@@ -166,7 +183,7 @@ validate_config() {
     cred_method="$(read_yaml_key "$file" "credential_method")"
     if [[ -n "$cred_method" ]]; then
         if [[ "$cred_method" != "keychain" && "$cred_method" != "env" ]]; then
-            echo "ERROR: credential_method must be 'keychain' or 'env' (got: $cred_method)"
+            echo "ERROR: credential_method must be 'keychain' or 'env' (got: $cred_method)" >&2
             errors=$((errors + 1))
         fi
     fi
@@ -176,17 +193,17 @@ validate_config() {
     docs_path="$(read_yaml_key "$file" "docs_path")"
     if [[ -n "$docs_path" ]]; then
         if [[ "$docs_path" == /* ]]; then
-            echo "ERROR: docs_path must be relative (got: $docs_path)"
+            echo "ERROR: docs_path must be relative (got: $docs_path)" >&2
             errors=$((errors + 1))
         fi
         if echo "$docs_path" | grep -qE '\.\.'; then
-            echo "ERROR: docs_path must not contain '..' (got: $docs_path)"
+            echo "ERROR: docs_path must not contain '..' (got: $docs_path)" >&2
             errors=$((errors + 1))
         fi
     fi
 
     if [[ $errors -gt 0 ]]; then
-        echo "Validation failed with $errors error(s)"
+        echo "Validation failed with $errors error(s)" >&2
         return 1
     fi
 
@@ -195,6 +212,7 @@ validate_config() {
 }
 
 # Merge per-project config over global (only allowed keys)
+# NOTE: Only top-level scalar values are merged. Block values like workflows are not merged from per-project config.
 resolve_config() {
     local project_config
     project_config="$(find_project_config)" || true
@@ -210,6 +228,7 @@ resolve_config() {
     # Start with global config
     local tmpfile
     tmpfile="$(mktemp)"
+    _cleanup_files+=("$tmpfile")
     cp "$GLOBAL_CONFIG" "$tmpfile"
 
     for key in $allowed_keys; do
@@ -221,7 +240,6 @@ resolve_config() {
     done
 
     cat "$tmpfile"
-    rm -f "$tmpfile"
 }
 
 # Main command dispatch
