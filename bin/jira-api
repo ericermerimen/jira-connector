@@ -59,7 +59,7 @@ main() {
         tmpfile="$(mktemp)"
 
         # Pipe credentials to curl via --config - to avoid ps visibility
-        http_code="$(printf -- '-u "%s:%s"\n' "$email" "$token" | curl --config - \
+        http_code="$(printf -- '-u %s:%s\n' "$email" "$token" | curl --config - \
             -s -w "%{http_code}" -o "$tmpfile" \
             --connect-timeout 10 \
             -H "Accept: application/json" \

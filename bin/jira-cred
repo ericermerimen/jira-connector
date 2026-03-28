@@ -185,7 +185,7 @@ cmd_validate() {
 
     # Pipe credentials via curl --config to avoid ps visibility
     local http_code
-    http_code="$(printf -- '-u "%s:%s"\n' "$email" "$token" | curl --config - \
+    http_code="$(printf -- '-u %s:%s\n' "$email" "$token" | curl --config - \
         -s -o /dev/null -w "%{http_code}" \
         --connect-timeout 10 \
         -H "Accept: application/json" \
