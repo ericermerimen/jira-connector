@@ -38,7 +38,7 @@ read_yaml_key() {
     # Simple top-level key extraction (handles: key: value, key: "value")
     while IFS= read -r line; do
         if [[ "$line" == "${key}:"* ]]; then
-            printf '%s\n' "$line" | sed -E 's/^[^:]+:\s*//' | sed -E 's/^["'"'"']|["'"'"']$//g' | sed 's/\s*$//'
+            printf '%s\n' "$line" | sed -E 's/^[^:]+:[[:space:]]*//' | sed -E 's/^["'"'"']|["'"'"']$//g' | sed -E 's/[[:space:]]*$//'
             return
         fi
     done < "$file"
