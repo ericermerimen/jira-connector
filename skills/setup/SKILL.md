@@ -52,18 +52,18 @@ If all good, tell user: "Prerequisites OK. Detected environment: [env type]." Th
 
 Ask the user in plain text:
 
-"What's your Jira URL? You can paste your full board URL (e.g. https://mycompany.atlassian.net/jira/software/projects/PE/boards/33) or just the base URL (https://mycompany.atlassian.net)."
+"What's your Jira URL? You can paste your full board URL or just the base URL (e.g. https://mycompany.atlassian.net)."
 
 **STOP your response here. Wait for the user to type their URL.**
 
 When they answer:
 - **Parse the URL intelligently:**
-  - If they pasted a full board/project URL like `https://example.atlassian.net/jira/software/projects/PE/boards/33`:
-    - Extract the base URL: `https://example.atlassian.net`
-    - Extract the project key if present in the path (e.g., `PE` from `/projects/PE/`)
-    - Tell user: "Got it. Base URL: https://example.atlassian.net, detected project: PE."
-    - Save the project key: `$PLUGIN_ROOT/bin/jira-config set projects "[PE]"`
-  - If they pasted just the base URL like `https://mycompany.atlassian.net`:
+  - If they pasted a full URL like `https://example.atlassian.net/jira/software/projects/PROJ/boards/1`:
+    - Extract the base URL (everything up to `.atlassian.net`)
+    - Extract the project key if present in the path (the value after `/projects/`)
+    - Tell user: "Got it. Base URL: [extracted]. Detected project: [key]."
+    - Save the project key: `$PLUGIN_ROOT/bin/jira-config set projects "[KEY]"`
+  - If they pasted just the base URL like `https://example.atlassian.net`:
     - Use as-is
 - Validate the base URL format: must contain `.atlassian.net`
 - Check the host resolves: `curl -s -o /dev/null --connect-timeout 10 --head "$BASE_URL" 2>&1`
