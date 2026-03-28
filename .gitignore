@@ -1,6 +1,9 @@
 # Per-project config (contains user-specific overrides)
 .jira-connector.yaml
 
+# Local-only docs (contain internal URLs)
+*.local.md
+
 # OS
 .DS_Store
 Thumbs.db
