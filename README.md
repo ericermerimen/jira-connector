@@ -1,77 +1,74 @@
 # jira-connector
 
-A Claude Code plugin that combines Jira ticket reading, git commit workflows, and documentation maintenance.
+A Claude Code plugin that connects your git workflow to Jira. Commit code, update tickets, and keep docs in sync, all from your terminal.
 
-## Requirements
-
-- Claude Code
-- bash 3.2+
-- curl, jq, git
-- Jira Cloud account with API token
-- macOS, Linux, or Windows (WSL2 / Git Bash)
-
-## Install
+## Quick Start
 
 ```bash
-# Step 1: Add the marketplace
 claude plugin marketplace add ericermerimen/jira-connector
-
-# Step 2: Install
 claude plugin install jira-connector
 ```
 
-To update later:
-```bash
-claude plugin marketplace update jira-connector
-claude plugin uninstall jira-connector
-claude plugin install jira-connector
-```
+Then run `/jira:setup` in Claude Code. It takes about 2 minutes.
+
+## What It Does
+
+### `/jira:commit`
+
+Commit your changes with an interactive flow that handles everything:
+
+1. **Review your commit** -- see the diff, approve or edit the message
+2. **Update Jira** -- post a comment, transition the ticket, reassign if needed
+3. **Check docs** -- see if any documentation references your changed files
+4. **Done** -- get a summary with a clickable link to the Jira ticket
+
+No ticket? No problem. It skips Jira and gives you a clean commit with docs check.
+
+Every step asks for your approval. Nothing fires until you say go.
+
+### `/jira:docs`
+
+Run before a PR to catch stale documentation. Compares your branch against the base, finds docs that reference changed files, and proposes updates.
+
+### Jira Reader Agent
+
+Mention a ticket in conversation and it shows up automatically:
+
+- "what's PROJ-100?" -- fetches ticket details
+- "my tickets" -- your open issues
+- "current sprint" -- sprint board view
 
 ## Setup
 
-Run `/jira:setup` in Claude Code. The wizard walks you through:
+`/jira:setup` walks you through everything step by step:
 
-1. Connecting to your Jira Cloud instance
-2. Creating and storing an API token
-3. Configuring workflow rules (what happens when you commit against a Bug vs Story)
-4. Optional: commit message style, docs structure
+1. Your Jira URL (paste your board URL, it extracts what it needs)
+2. Your email
+3. An API token (the wizard shows you exactly where to create one)
+4. Where to store credentials (Keychain on macOS, env vars elsewhere)
+5. Optional: workflow rules, commit style, docs structure
 
-## Usage
+Picks sensible defaults so you can start fast. Learns your preferences as you use it. Re-run anytime to change settings.
 
-### `/jira:commit` -- Commit with Jira Integration
+## Multi-Project
 
-After making changes, run `/jira:commit`. It walks through 4 checkpoints:
+Works across different Jira instances. Global config at `~/.jira-connector/config.yaml` provides defaults. Drop a `.jira-connector.yaml` in any project root to override per-project (git-ignored automatically).
 
-1. **Git commit** -- review staged changes, confirm commit message
-2. **Jira update** -- review comment and status transition, confirm
-3. **Doc check** -- see if any docs reference changed files, update if needed
-4. **Execute** -- all confirmed actions fire at once
+## Platforms
 
-Skip any step. Abort anytime. Nothing happens until you confirm.
-
-### `/jira:docs` -- Documentation Sync
-
-Before a PR, run `/jira:docs` to check if your docs are in sync with code changes. Scans for stale references, dead links, and outdated content.
-
-### `jira-reader` Agent
-
-Mention a ticket ID in conversation ("what's PROJ-100?") and the agent fetches it automatically. Also handles "my tickets", "current sprint", etc.
-
-## Multi-Project Support
-
-Global config at `~/.jira-connector/config.yaml` provides defaults. Per-project overrides via `.jira-connector.yaml` in your project root (git-ignored).
-
-## Platform Support
-
-| Platform | Credential Storage | Status |
+| Platform | Credentials | Works? |
 |---|---|---|
-| macOS (desktop) | Keychain | Supported |
-| macOS (SSH) | Env vars | Supported |
-| Linux (desktop) | secret-tool | Supported |
-| Linux (headless) | Env vars | Supported |
-| Windows (WSL2) | Env vars | Supported |
-| Windows (Git Bash) | Env vars | Supported |
-| Windows (PowerShell) | -- | Not supported |
+| macOS | Keychain or env vars | Yes |
+| Linux (desktop) | secret-tool or env vars | Yes |
+| Linux (server/container) | Env vars | Yes |
+| Windows (WSL2 / Git Bash) | Env vars | Yes |
+| Windows (PowerShell) | -- | No |
+
+## Update
+
+```bash
+claude plugin marketplace update jira-connector && claude plugin uninstall jira-connector && claude plugin install jira-connector
+```
 
 ## License
 
