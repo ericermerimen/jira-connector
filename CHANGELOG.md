@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-03-30
+
+### Fixed
+- Cleanup trap exit code in jira-config, jira-cred, jira-api (empty array + set -u = unbound variable on Linux)
+- `jira-config get` returning exit 1 even when key was found
+- CI: git identity for test repos, stat syntax for Linux vs macOS, getcwd error on deleted temp dir
+
+### Added
+- Windows (Git Bash) to CI matrix — now testing on ubuntu, macos, and windows
+- Platform-aware permissions test (skips on Windows)
+
 ## [0.4.0] - 2026-03-30
 
 ### Added
