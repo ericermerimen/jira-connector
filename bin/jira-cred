@@ -197,10 +197,19 @@ cmd_validate() {
     }
 
     # Pipe credentials via curl --config to avoid ps visibility
+    # Add --ssl-no-revoke for Windows environments to bypass certificate revocation checks
+    local curl_opts=()
+    local env
+    env="$(detect_environment)"
+    if [[ "$env" == windows-* ]]; then
+        curl_opts+=(--ssl-no-revoke)
+    fi
+
     local http_code
     http_code="$(printf -- '-u %s:%s\n' "$email" "$token" | curl --config - \
         -s -o /dev/null -w "%{http_code}" \
         --connect-timeout 10 \
+        "${curl_opts[@]}" \
         -H "Accept: application/json" \
         "${url}/rest/api/3/myself" 2>/dev/null)" || {
         echo "ERROR: Network timeout" >&2
