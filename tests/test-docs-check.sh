@@ -36,6 +36,8 @@ echo "=== docs-check tests ==="
 # Setup test repo
 cd "$TEST_REPO"
 git init -q
+git config user.email "test@test.com"
+git config user.name "Test"
 mkdir -p docs src
 echo "# Docs\nSee [architecture](architecture/)" > docs/README.md
 echo "# Architecture\nThe main file is src/app.ts" > docs/architecture.md

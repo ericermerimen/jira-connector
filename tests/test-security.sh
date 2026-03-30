@@ -91,6 +91,8 @@ echo "-- per-project security --"
 TEST_REPO="$(mktemp -d)"
 cd "$TEST_REPO"
 git init -q
+git config user.email "test@test.com"
+git config user.name "Test"
 echo "credential_method: file" > .jira-connector.yaml
 git add -A && git commit -q -m "init"
 
