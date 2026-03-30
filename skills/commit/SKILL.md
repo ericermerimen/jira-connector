@@ -8,6 +8,23 @@ description: >
 
 # /jira:commit -- Commit with Jira Integration
 
+## When to Use
+
+Trigger this skill when the user says or implies any of:
+- "/jira:commit"
+- "commit my changes"
+- "commit and update Jira"
+- "commit this to PROJ-100"
+- "commit with ticket update"
+- "push this to Jira" (they mean commit, not git push)
+- "save my work and update the ticket"
+- "done with this ticket, commit it"
+
+Do NOT trigger on:
+- "git commit" without Jira context (use normal git flow)
+- "push to remote" (that is git push, not this skill)
+- Past-tense references like "I already committed this"
+
 ## CRITICAL RULES
 
 1. **USE AskUserQuestion** for every checkpoint. Proper A/B/C selection UI, not plain text.

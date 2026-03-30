@@ -13,7 +13,9 @@ trap cleanup EXIT
 #   jira-config validate               # Validate config, exit 0 if valid, 1 if not
 #   jira-config resolve                # Print merged config (global + per-project)
 #   jira-config path                   # Print path to global config file
+#   jira-config version                # Print version, config path, credential method, projects
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GLOBAL_CONFIG="$HOME/.jira-connector/config.yaml"
 PROJECT_CONFIG=""
 
@@ -242,6 +244,38 @@ resolve_config() {
     cat "$tmpfile"
 }
 
+# Print version and diagnostics
+show_version() {
+    local plugin_json=""
+    # Walk up from script dir to find plugin.json
+    local search_dir="$SCRIPT_DIR"
+    while [[ "$search_dir" != "/" ]]; do
+        if [[ -f "$search_dir/.claude-plugin/plugin.json" ]]; then
+            plugin_json="$search_dir/.claude-plugin/plugin.json"
+            break
+        fi
+        search_dir="$(dirname "$search_dir")"
+    done
+    if [[ -z "$plugin_json" ]]; then
+        echo "ERROR: Cannot find plugin.json" >&2
+        exit 1
+    fi
+    local ver
+    ver="$(grep '"version"' "$plugin_json" | head -1 | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+    echo "jira-connector v${ver}"
+    echo "Config: $GLOBAL_CONFIG"
+    local cred_method
+    cred_method="$(read_yaml_key "$GLOBAL_CONFIG" "credential_method" 2>/dev/null || echo "not configured")"
+    echo "Credentials: ${cred_method:-not configured}"
+    local projects
+    projects="$(read_yaml_key "$GLOBAL_CONFIG" "projects" 2>/dev/null || echo "")"
+    if [[ -n "$projects" && "$projects" != "[]" ]]; then
+        echo "Projects: $projects"
+    else
+        echo "Projects: none"
+    fi
+}
+
 # Main command dispatch
 case "${1:-}" in
     get)
@@ -265,8 +299,11 @@ case "${1:-}" in
     path)
         echo "$GLOBAL_CONFIG"
         ;;
+    version)
+        show_version
+        ;;
     *)
-        echo "Usage: jira-config {get|get-nested|set|validate|resolve|path} [args]"
+        echo "Usage: jira-config {get|get-nested|set|validate|resolve|path|version} [args]"
         exit 1
         ;;
 esac

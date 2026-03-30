@@ -41,3 +41,20 @@ If credentials fail (exit 1-5), skills should degrade gracefully:
 - /jira:commit: git commit still works, Jira step skipped with error message
 - /jira:docs: can still scan docs, but cannot fetch ticket context
 - jira-reader agent: show error, suggest /jira:setup
+
+## User-Friendly Error Formatting
+
+When `jira-api` or `jira-cred` returns an error, NEVER show raw curl output, HTTP status codes, or stack traces to the user. Translate exit codes into clear, actionable messages:
+
+| Exit Code | Raw Error | Show to User |
+|---|---|---|
+| 1 (401) | `ERROR: Authentication failed (401)` | "Your Jira token is invalid or expired. Regenerate it at https://id.atlassian.com/manage-profile/security/api-tokens and run `/jira:setup`." |
+| 3 | `ERROR: Network timeout` | "Cannot reach Jira. Check your internet connection or VPN. Git operations will still work." |
+| 4 (403) | `ERROR: Access denied (403)` | "Permission denied. Your Jira account does not have access to this resource. Check your project permissions in Jira admin." |
+| 5 | `ERROR: Credential 'token' not found` | "No Jira credentials found. Run `/jira:setup` to connect your account." |
+
+Rules:
+- Always include the next step the user should take
+- Never expose HTTP status codes, curl flags, or response bodies
+- If multiple errors occur, show only the most relevant one
+- If a Jira operation fails mid-flow, confirm what DID succeed (e.g., "Commit succeeded. Jira update failed: permission denied.")

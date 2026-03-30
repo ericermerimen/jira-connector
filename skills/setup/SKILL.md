@@ -8,6 +8,22 @@ description: >
 
 # /jira:setup -- Jira Connector Setup Wizard
 
+## When to Use
+
+Trigger this skill when the user says or implies any of:
+- "/jira:setup"
+- "set up Jira" or "setup Jira"
+- "connect to Jira"
+- "configure Jira credentials"
+- "link my Jira account"
+- "I need to add my Jira token"
+- "reconfigure Jira" or "change Jira settings"
+- "my Jira isn't working" (suggest setup as a fix)
+
+Do NOT trigger on:
+- "what's my Jira config?" (use `jira-config version` or `jira-config validate` instead)
+- Questions about Jira features or API
+
 Interactive setup wizard. Each step uses AskUserQuestion for proper selection UI.
 
 ## CRITICAL RULES

@@ -1,8 +1,35 @@
 # jira-connector
 
+![Version](https://img.shields.io/badge/version-0.3.10-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL2-lightgrey)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-blueviolet)
+
 A Claude Code plugin that connects your git workflow to Jira.
 
 Commit code, update tickets, and keep docs in sync, all from your terminal. For developers using Claude Code with Jira Cloud.
+
+## Quick Start
+
+```bash
+# 1. Install
+claude plugin marketplace add ericermerimen/jira-connector
+claude plugin install jira-connector
+
+# 2. Configure (takes ~2 minutes)
+# In Claude Code, type:
+/jira:setup
+
+# 3. Use
+# Commit with Jira integration:
+/jira:commit
+
+# Check docs before a PR:
+/jira:docs
+
+# Ask about any ticket:
+# "what's PROJ-100?"
+```
 
 ## What It Does
 
@@ -37,9 +64,20 @@ Mention a ticket in conversation and it shows up automatically:
 
 ## Install
 
+From the Claude Code marketplace:
+
 ```bash
 claude plugin marketplace add ericermerimen/jira-connector
 claude plugin install jira-connector
+```
+
+From source (for development):
+
+```bash
+git clone https://github.com/ericermerimen/jira-connector.git
+cd jira-connector
+# Run tests to verify
+bash tests/test-config.sh && bash tests/test-cred.sh && bash tests/test-api.sh && bash tests/test-docs-check.sh && bash tests/test-security.sh
 ```
 
 Then run `/jira:setup` in Claude Code. Takes about 2 minutes.
@@ -69,6 +107,16 @@ Sensible defaults so you can start fast. Re-run anytime to change settings.
 ## Multi-Project
 
 Works across Jira instances. Global config at `~/.jira-connector/config.yaml`, per-project overrides via `.jira-connector.yaml` in any repo root (git-ignored automatically).
+
+## Diagnostics
+
+Check your setup at any time:
+
+```bash
+bin/jira-config version
+```
+
+Prints the plugin version, config path, credential method, and connected projects.
 
 ## Update
 

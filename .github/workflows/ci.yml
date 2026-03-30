@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Verify prerequisites
+        run: |
+          bash --version | head -1
+          curl --version | head -1
+          git --version
+          jq --version
+
+      - name: Run test-config
+        run: bash tests/test-config.sh
+
+      - name: Run test-cred
+        run: bash tests/test-cred.sh
+
+      - name: Run test-api
+        run: bash tests/test-api.sh
+
+      - name: Run test-docs-check
+        run: bash tests/test-docs-check.sh
+
+      - name: Run test-security
+        run: bash tests/test-security.sh

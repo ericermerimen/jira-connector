@@ -8,6 +8,23 @@ description: >
 
 # /jira:docs -- Documentation Sync
 
+## When to Use
+
+Trigger this skill when the user says or implies any of:
+- "/jira:docs"
+- "check docs" or "scan docs"
+- "are my docs up to date?"
+- "documentation sync"
+- "check for stale docs"
+- "review docs before PR"
+- "which docs need updating?"
+- "find broken doc references"
+
+Do NOT trigger on:
+- "write documentation" (that is a general writing task)
+- "update the README" (that is a specific file edit)
+- Questions about reading docs for understanding (e.g., "what do the docs say about X?")
+
 ## Plugin Root
 
 ```bash
