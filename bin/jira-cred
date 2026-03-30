@@ -23,7 +23,7 @@ SERVICE_NAME="jira-connector"
 
 # Cleanup trap for any temp files
 _cleanup_files=()
-cleanup() { rm -f "${_cleanup_files[@]}"; }
+cleanup() { [[ ${#_cleanup_files[@]} -gt 0 ]] && rm -f "${_cleanup_files[@]}"; return 0; }
 trap cleanup EXIT
 
 # Get credential method from config
