@@ -111,7 +111,11 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; t
 else
     config_file="$("$BIN_DIR/jira-config" path)"
     if [[ -f "$config_file" ]]; then
-        perms="$(stat -f '%A' "$config_file" 2>/dev/null || stat -c '%a' "$config_file" 2>/dev/null || echo "unknown")"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            perms="$(stat -f '%A' "$config_file" 2>/dev/null || echo "unknown")"
+        else
+            perms="$(stat -c '%a' "$config_file" 2>/dev/null || echo "unknown")"
+        fi
         if [[ "$perms" == "600" ]]; then
             echo "  PASS: config file has 600 permissions"
             PASS=$((PASS + 1))
