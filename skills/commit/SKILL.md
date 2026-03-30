@@ -14,6 +14,7 @@ description: >
 2. **WAIT FOR ANSWERS.** After each AskUserQuestion, STOP. Do NOT continue until the user answers.
 3. **NEVER SHOW THE API TOKEN** in any output.
 4. **NO TICKET = STILL WORKS.** If no Jira ticket is found, skip Jira update gracefully and continue with git commit + docs check. The commit flow works perfectly without Jira.
+5. **COMMIT MESSAGES MUST HAVE A BODY.** Every commit message MUST have a subject line AND a body with `- ` bullet points listing specific changes. A subject-only message is NEVER acceptable. No exceptions, even for single-file changes.
 
 ## Plugin Root
 
@@ -251,10 +252,16 @@ If A (skip) from the first question: go to Step 4.
 
 Run all confirmed actions in order:
 
-1. **Git commit** (always):
+1. **Git commit** (always). Use a heredoc to preserve the multi-line body:
    ```bash
    git add <confirmed files>
-   git commit -m "<confirmed message>"
+   git commit -m "$(cat <<'EOF'
+   <subject line>
+
+   - <change 1>
+   - <change 2>
+   EOF
+   )"
    ```
 
 2. **Jira update** (only if confirmed in Step 2):
