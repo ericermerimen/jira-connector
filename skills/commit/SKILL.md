@@ -100,6 +100,10 @@ Show the commit details as plain text ABOVE the question:
 Commit message:
   feat(PROJ-100): add user profile caching
 
+  - Add Redis-backed cache layer for user profile lookups
+  - Add useUserCache hook with 5-minute TTL and stale-while-revalidate
+  - Add cache invalidation on profile update API calls
+
 Files (3 changed, +47, -12):
   src/components/UserCache.tsx
   src/hooks/useUserCache.ts
