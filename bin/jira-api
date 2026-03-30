@@ -11,10 +11,6 @@ trap cleanup EXIT
 #   jira-api <endpoint> -X POST -d '{"json":1}'  # POST request
 #   jira-api <endpoint> [any curl args...]        # Pass-through
 #
-# Reads jira_url and jira_email from config.
-# Retrieves token from jira-cred (piped via curl --config to avoid ps visibility).
-# Retries on 429 with exponential backoff (max 3 retries).
-#
 # Exit codes:
 #   0 = success
 #   1 = auth fail / not found / other
@@ -27,33 +23,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAX_RETRIES=3
 INITIAL_BACKOFF=2
 
-# Detect environment for Windows-specific curl options
-detect_environment() {
-    if [[ -n "${MSYSTEM:-}" ]]; then
-        echo "windows-gitbash"
-    elif [[ "$(uname -r 2>/dev/null || true)" == *[Mm]icrosoft* ]] || [[ "$(uname -r 2>/dev/null || true)" == *WSL* ]]; then
-        echo "windows-wsl"
-    else
-        echo "other"
-    fi
-}
-
-# Load config
-get_config_val() {
-    local val
-    val="$("$SCRIPT_DIR/jira-config" get "$1" 2>/dev/null)" || true
-    if [[ -n "$val" ]]; then
-        echo "$val"
-    else
-        "$SCRIPT_DIR/jira-config" resolve 2>/dev/null | while IFS= read -r line; do
-            if [[ "$line" == "$1:"* ]]; then
-                echo "$line" | sed -E 's/^[^:]+:[[:space:]]*//'
-                return
-            fi
-        done
-    fi
-}
-
 main() {
     local endpoint="${1:-}"
     [[ -z "$endpoint" ]] && { echo "Usage: jira-api <endpoint> [curl-args...]"; exit 1; }
@@ -63,8 +32,8 @@ main() {
     endpoint="${endpoint#/}"
 
     local url email token
-    url="$(get_config_val jira_url)"
-    email="$(get_config_val jira_email)"
+    url="$("$SCRIPT_DIR/jira-config" get jira_url 2>/dev/null)" || true
+    email="$("$SCRIPT_DIR/jira-config" get jira_email 2>/dev/null)" || true
     token="$("$SCRIPT_DIR/jira-cred" get token 2>/dev/null)" || {
         echo "ERROR: Could not retrieve Jira token" >&2
         exit 5
@@ -77,10 +46,10 @@ main() {
     local attempt=0
     local backoff=$INITIAL_BACKOFF
 
-    # Add --ssl-no-revoke for Windows environments to bypass certificate revocation checks
+    # Add --ssl-no-revoke for Windows environments
     local curl_opts=()
     local env
-    env="$(detect_environment)"
+    env="$("$SCRIPT_DIR/jira-cred" detect-env)"
     if [[ "$env" == windows-* ]]; then
         curl_opts+=(--ssl-no-revoke)
     fi
@@ -90,7 +59,6 @@ main() {
         tmpfile="$(mktemp)"
         _cleanup_files+=("$tmpfile")
 
-        # Pipe credentials to curl via --config - to avoid ps visibility
         http_code="$(printf -- '-u %s:%s\n' "$email" "$token" | curl --config - \
             -s -w "%{http_code}" -o "$tmpfile" \
             --connect-timeout 10 \

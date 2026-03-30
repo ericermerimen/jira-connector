@@ -1,4 +1,0 @@
-jira_url: http://not-https.example.com
-jira_email: not-an-email
-credential_method: invalid
-docs_path: /absolute/path

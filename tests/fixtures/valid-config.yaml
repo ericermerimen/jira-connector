@@ -1,8 +1,0 @@
-jira_url: https://mycompany.atlassian.net
-jira_email: user@company.com
-credential_method: keychain
-os: darwin
-docs_path: docs
-commit_style: null
-jira_comment_style: null
-ticket_pattern: "[A-Z][A-Z0-9]+-[0-9]+"

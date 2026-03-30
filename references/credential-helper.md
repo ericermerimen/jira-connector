@@ -4,18 +4,12 @@ Per-environment credential commands for debugging.
 
 ## macOS (Keychain)
 
-Store:
 ```bash
+# Store
 security add-generic-password -s "jira-connector-token" -a "$USER" -w "<token>"
-```
-
-Retrieve:
-```bash
+# Retrieve
 security find-generic-password -s "jira-connector-token" -a "$USER" -w
-```
-
-Delete:
-```bash
+# Delete
 security delete-generic-password -s "jira-connector-token" -a "$USER"
 ```
 
@@ -23,36 +17,25 @@ security delete-generic-password -s "jira-connector-token" -a "$USER"
 
 Requires: `libsecret` + running D-Bus secret service (GNOME Keyring, KDE Wallet, KeePassXC)
 
-Store:
 ```bash
+# Store
 echo "<token>" | secret-tool store --label "jira-connector token" service "jira-connector" key "token"
-```
-
-Retrieve:
-```bash
+# Retrieve
 secret-tool lookup service "jira-connector" key "token"
-```
-
-Delete:
-```bash
+# Delete
 secret-tool clear service "jira-connector" key "token"
 ```
 
 ## Environment Variables
 
-Set in shell profile (.bashrc, .zshrc) or .env file:
 ```bash
 export JIRA_EMAIL="user@company.com"
 export JIRA_API_TOKEN="your-api-token"
 ```
 
-Security notes:
-- Visible in `ps aux` if used in command args (we pipe via stdin instead)
-- Visible to child processes via /proc on Linux
-- May appear in logs if `set -x` is enabled
-- Recommend .env file with `chmod 600` over shell profile export
+Recommend `.env` file with `chmod 600` over shell profile export. Env vars are visible to child processes and may appear in logs with `set -x`.
 
-## Environment Detection Logic
+## Environment Detection
 
 | Check | Environment |
 |---|---|
@@ -61,5 +44,4 @@ Security notes:
 | `$MSYSTEM` set | Windows Git Bash |
 | `uname -r` contains microsoft/WSL | Windows WSL2 |
 | `$DISPLAY` or `$WAYLAND_DISPLAY` + `secret-tool` available | Linux desktop |
-| `$DISPLAY` or `$WAYLAND_DISPLAY` + no `secret-tool` | Linux desktop (no secret-tool) |
 | None of above | Linux headless |
