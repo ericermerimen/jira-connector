@@ -100,6 +100,7 @@ resolved="$("$BIN_DIR/jira-config" resolve 2>/dev/null)"
 method="$(echo "$resolved" | grep "^credential_method:" | sed 's/credential_method: //')"
 assert_not_contains "per-project cannot override credential_method" "file" "$method"
 
+cd "$TEST_HOME"
 rm -rf "$TEST_REPO"
 
 # Test: config file permissions
