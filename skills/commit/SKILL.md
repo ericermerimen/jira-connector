@@ -84,6 +84,17 @@ Draft commit message using `commit_style` from config:
 - If no ticket: `type: description` (no scope)
 - If custom style set: follow the natural language instruction
 
+**ALWAYS include a commit body with bullet points.** The subject line alone is never enough. After the subject, add a blank line then list the specific changes as `- ` bullet points. Analyze the diff carefully and describe WHAT changed and WHY. Even for simple changes like renames or single-file edits, list the concrete actions taken.
+
+Example:
+```
+refactor(PROJ-100): rename legacy model to new convention
+
+- Rename OldModel class to NewModel across all references
+- Update imports in 4 consuming components
+- Update type definitions in shared types module
+```
+
 Show the commit details as plain text ABOVE the question:
 ```
 Commit message:
