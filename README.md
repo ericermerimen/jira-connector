@@ -29,6 +29,12 @@ Mention a ticket in conversation and it shows up automatically:
 - "my tickets" -- your open issues
 - "current sprint" -- sprint board
 
+## Prerequisites
+
+- **curl**, **git**, **jq** -- must be in your PATH
+- macOS/Linux: usually pre-installed (install `jq` via `brew install jq` or `apt install jq`)
+- Windows (Git Bash): install `jq` via `choco install jq` or `winget install jqlang.jq`
+
 ## Install
 
 ```bash
