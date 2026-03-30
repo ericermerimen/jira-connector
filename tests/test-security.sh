@@ -103,20 +103,25 @@ assert_not_contains "per-project cannot override credential_method" "file" "$met
 cd "$TEST_HOME"
 rm -rf "$TEST_REPO"
 
-# Test: config file permissions
+# Test: config file permissions (skip on Windows -- NTFS doesn't enforce Unix perms)
 echo "-- file permissions --"
-config_file="$("$BIN_DIR/jira-config" path)"
-if [[ -f "$config_file" ]]; then
-    perms="$(stat -f '%A' "$config_file" 2>/dev/null || stat -c '%a' "$config_file" 2>/dev/null || echo "unknown")"
-    if [[ "$perms" == "600" ]]; then
-        echo "  PASS: config file has 600 permissions"
-        PASS=$((PASS + 1))
-    elif [[ "$perms" == "unknown" ]]; then
-        echo "  SKIP: cannot check permissions on this OS"
-        PASS=$((PASS + 1))
-    else
-        echo "  FAIL: config file has $perms permissions (expected 600)"
-        FAIL=$((FAIL + 1))
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+    echo "  SKIP: file permissions not enforced on Windows"
+    PASS=$((PASS + 1))
+else
+    config_file="$("$BIN_DIR/jira-config" path)"
+    if [[ -f "$config_file" ]]; then
+        perms="$(stat -f '%A' "$config_file" 2>/dev/null || stat -c '%a' "$config_file" 2>/dev/null || echo "unknown")"
+        if [[ "$perms" == "600" ]]; then
+            echo "  PASS: config file has 600 permissions"
+            PASS=$((PASS + 1))
+        elif [[ "$perms" == "unknown" ]]; then
+            echo "  SKIP: cannot check permissions on this OS"
+            PASS=$((PASS + 1))
+        else
+            echo "  FAIL: config file has $perms permissions (expected 600)"
+            FAIL=$((FAIL + 1))
+        fi
     fi
 fi
 
