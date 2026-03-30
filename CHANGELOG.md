@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-03-30
+
+### Added
+- CLAUDE.md for developer/AI experience
+- CHANGELOG.md with full history
+- ARCHITECTURE.md documenting config layers, credential flow, skill patterns
+- `jira-config version` diagnostic subcommand
+- CI pipeline (GitHub Actions) running all test suites
+- "When to Use" trigger patterns on all skills
+- User-friendly error formatting in preamble
+- README badges, quick start, diagnostics section
+
+### Changed
+- Simplified entire codebase: -782 lines (40% reduction)
+- Skills trimmed to essentials (commit 329->134, setup 284->120, docs 139->66)
+- Removed duplicated `detect_environment()` from jira-api
+- Removed 6 unused test fixtures
+
 ## [0.3.10] - 2026-03-30
 
 ### Fixed
