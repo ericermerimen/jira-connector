@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-04-06
+
+### Fixed
+- `jira-api`: file uploads now work. Auto-detects `-F`/`--form` flag and skips `Content-Type: application/json` so curl sets `multipart/form-data` for attachment uploads.
+
+### Added
+- Jira attachment upload support via `jira-api` (e.g. screenshots to tickets).
+- Inline image embedding in comments using v2 API wiki markup (`!filename!`) since v3 ADF lacks media embedding support.
+
 ## [0.4.1] - 2026-03-30
 
 ### Fixed

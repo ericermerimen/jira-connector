@@ -54,6 +54,17 @@ main() {
         curl_opts+=(--ssl-no-revoke)
     fi
 
+    # Detect file upload (-F flag) — skip Content-Type so curl sets multipart/form-data
+    local has_file_upload=false
+    for arg in "$@"; do
+        [[ "$arg" == "-F" || "$arg" == --form || "$arg" == --form=* ]] && has_file_upload=true
+    done
+
+    local content_type_args=()
+    if [[ "$has_file_upload" == false ]]; then
+        content_type_args+=(-H "Content-Type: application/json")
+    fi
+
     while [[ $attempt -le $MAX_RETRIES ]]; do
         local tmpfile http_code
         tmpfile="$(mktemp)"
@@ -64,7 +75,7 @@ main() {
             --connect-timeout 10 \
             "${curl_opts[@]}" \
             -H "Accept: application/json" \
-            -H "Content-Type: application/json" \
+            "${content_type_args[@]}" \
             "$@" \
             "$full_url" 2>/dev/null)" || {
             echo "ERROR: Network timeout" >&2
